@@ -1,112 +1,70 @@
-name: Build Samsung A04 SukiSU-Ultra Kernel
+name: Build Samsung A04 Kernel (rsuntk-oss)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
-  # 1. مرحلة تشغيل الاختبارات للتأكد من سلامة السكريبتات
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Bats (Bash Automated Testing System)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bats
-
-      - name: Make Scripts Executable
-        run: |
-          chmod +x build_kernel.sh
-          chmod +x scripts/*.sh 2>/devnull || true
-          chmod +x tests/*.bash 2>/devnull || true
-
-      - name: Run Tests
-        run: |
-          if [ -d "tests" ]; then
-            bats tests/build_kernel.bats || echo "Tests passed with warnings."
-          fi
-
-  # 2. مرحلة تجميع النواة باستخدام السكريبتات المرفقة
   build:
-    needs: test
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Workflow Repository
         uses: actions/checkout@v4
 
-      - name: Install Build Dependencies
+      - name: Set up Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential flex git git-lfs libssl-dev libcrypto++-dev lz4 binutils binutils-aarch64-linux-gnu libc6-dev-arm64-cross libc6-dev-i386 zip python3 checkpolicy libsepol-dev libelf-dev libncurses-dev libtinfo5 libncurses5 || true
-          sudo apt-get install -y libtinfo5 || sudo apt-get install -y libtinfo6
-          sudo ln -s /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5 2>/devnull || true
+          sudo apt-get install -y git ccache automake flex bison build-essential libssl-dev libncurses5-dev libncursesw5-dev libelf-dev bc u-boot-tools zip unzip liblz4-tool python3
 
-      - name: Setup Proton Clang Toolchain
+      - name: Clone Samsung A04 Kernel Source (latest-B Branch)
         run: |
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git "$HOME/proton-clang"
+          git clone --depth=1 -b latest-B https://github.com/rsuntk-oss/android_kernel_samsung_a04m.git kernel-source
 
-      - name: Prepare Scripts & Environment
+      - name: Download Toolchain (AOSP Clang)
         run: |
-          chmod +x build_kernel.sh
-          chmod +x scripts/lib.sh 2>/devnull || true
-          
-          # تحميل الدوال المساعدة إن وجدت
-          if [ -f "scripts/lib.sh" ]; then
-            source scripts/lib.sh
-          fi
+          mkdir -p $GITHUB_WORKSPACE/clang
+          cd $GITHUB_WORKSPACE/clang
+          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r416183b.tar.gz
+          tar -xzf clang-r416183b.tar.gz
+          rm clang-r416183b.tar.gz
 
-      - name: Execute Kernel Build Script
+      - name: Integrate KernelSU-Next
         run: |
-          export PATH="$HOME/proton-clang/bin:$PATH"
+          cd $GITHUB_WORKSPACE/kernel-source
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
+
+      - name: Build Kernel Image
+        run: |
+          cd $GITHUB_WORKSPACE/kernel-source
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
-          
-          # إعدادات Clang لبناء النواة (Kernel Space)
-          export CC=clang
-          export CXX=clang++
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-          export LLVM=1
-          export LLVM_IAS=1
+          export CC=clang
 
-          # إجبار أدوات المضيف (Host Tools) على استخدام أدوات النظام لمنع تعارض المكتبات
-          export HOSTCC=/usr/bin/gcc
-          export HOSTCXX=/usr/bin/g++
-          export HOSTLD=/usr/bin/ld
+          # البحث والتطبيق التلقائي لملف الـ defconfig الخاص بـ A04
+          make O=out a04m_defconfig || make O=out a04_defconfig || make O=out a04m_eur_open_defconfig
+          make -j$(nproc) O=out
 
-          # تشغيل سكريبت البناء الرئيسي الخاص بالمشروع
-          ./build_kernel.sh
-
-      - name: Package with AnyKernel3
+      - name: Pack with AnyKernel3
         run: |
-          git clone --depth=1 https://github.com/DaniTheSillyFem/AnyKernel3-a04.git AnyKernel3
-
-          if [ -f "kernel-source/out/arch/arm64/boot/Image.gz-dtb" ]; then
-            cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-          elif [ -f "kernel-source/out/arch/arm64/boot/Image.gz" ]; then
-            cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
-          elif [ -f "kernel-source/out/arch/arm64/boot/Image" ]; then
-            cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/Image
-          elif [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
-            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-          elif [ -f "out/arch/arm64/boot/Image" ]; then
-            cp out/arch/arm64/boot/Image AnyKernel3/Image
-          else
-            echo "Error: Kernel Image build output not found!" && exit 1
+          git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
+          cd AnyKernel3
+          
+          # نسخ ملف النواة المجمع
+          if [ -f ../kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp ../kernel-source/out/arch/arm64/boot/Image.gz-dtb .
+          elif [ -f ../kernel-source/out/arch/arm64/boot/Image.gz ]; then
+            cp ../kernel-source/out/arch/arm64/boot/Image.gz .
+          elif [ -f ../kernel-source/out/arch/arm64/boot/Image ]; then
+            cp ../kernel-source/out/arch/arm64/boot/Image .
           fi
 
-          cd AnyKernel3
-          rm -rf .git .github
-          zip -r9 "../TragicHorizon-v3-SukiSU-Samsung-A04.zip" *
+          zip -r9 ../KernelSU-Next-A04M.zip * -x .git README.md
 
-      - name: Upload Build Artifact
+      - name: Upload Kernel ZIP Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TragicHorizon-v3-SukiSU-Samsung-A04
-          path: TragicHorizon-v3-SukiSU-Samsung-A04.zip
+          name: KernelSU-Next-Samsung-A04M
+          path: KernelSU-Next-A04M.zip
