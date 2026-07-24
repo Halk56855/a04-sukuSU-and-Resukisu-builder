@@ -14,19 +14,16 @@ jobs:
       - name: Set up Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y git ccache automake flex bison build-essential libssl-dev libncurses5-dev libncursesw5-dev libelf-dev bc u-boot-tools zip unzip liblz4-tool python3
+          sudo apt-get install -y git ccache automake flex bison build-essential libssl-dev libncurses5-dev libncursesw5-dev libelf-dev bc u-boot-tools zip unzip liblz4-tool python3 libarchive-tools
 
       - name: Clone Samsung A04 Kernel Source (latest-B Branch)
         run: |
           git clone --depth=1 -b latest-B https://github.com/rsuntk-oss/android_kernel_samsung_a04m.git kernel-source
 
-      - name: Download Toolchain (ZyCromerZ Clang)
-        run: |
-          mkdir -p $GITHUB_WORKSPACE/clang
-          cd $GITHUB_WORKSPACE/clang
-          wget -q https://github.com/ZyCromerZ/Clang/releases/download/14.0.6-20230206-release/Clang-14.0.6-20230206.tar.gz
-          tar -xzf Clang-14.0.6-20230206.tar.gz
-          rm Clang-14.0.6-20230206.tar.gz
+      - name: Setup Proton Clang
+        uses: kdrag0n/setup-clang@master
+        with:
+          args: version 13.0
 
       - name: Integrate KernelSU-Next (Dev Branch)
         run: |
@@ -36,7 +33,6 @@ jobs:
       - name: Build Kernel Image
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
-          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
