@@ -20,18 +20,18 @@ jobs:
         run: |
           git clone --depth=1 -b latest-B https://github.com/rsuntk-oss/android_kernel_samsung_a04m.git kernel-source
 
-      - name: Download Toolchain (AOSP Clang)
+      - name: Download Toolchain (ZyCromerZ Clang)
         run: |
           mkdir -p $GITHUB_WORKSPACE/clang
           cd $GITHUB_WORKSPACE/clang
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r416183b.tar.gz
-          tar -xzf clang-r416183b.tar.gz
-          rm clang-r416183b.tar.gz
+          wget -q https://github.com/ZyCromerZ/Clang/releases/download/14.0.6-20230206-release/Clang-14.0.6-20230206.tar.gz
+          tar -xzf Clang-14.0.6-20230206.tar.gz
+          rm Clang-14.0.6-20230206.tar.gz
 
-      - name: Integrate KernelSU-Next
+      - name: Integrate KernelSU-Next (Dev Branch)
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s dev
 
       - name: Build Kernel Image
         run: |
@@ -43,7 +43,7 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
           export CC=clang
 
-          # البحث والتطبيق التلقائي لملف الـ defconfig الخاص بـ A04
+          # إعداد وتجميع النواة
           make O=out a04m_defconfig || make O=out a04_defconfig || make O=out a04m_eur_open_defconfig
           make -j$(nproc) O=out
 
@@ -52,7 +52,7 @@ jobs:
           git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
           cd AnyKernel3
           
-          # نسخ ملف النواة المجمع
+          # نسخ ملف النواة الناتج
           if [ -f ../kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
             cp ../kernel-source/out/arch/arm64/boot/Image.gz-dtb .
           elif [ -f ../kernel-source/out/arch/arm64/boot/Image.gz ]; then
