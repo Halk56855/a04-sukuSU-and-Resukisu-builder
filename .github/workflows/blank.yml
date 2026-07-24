@@ -14,16 +14,15 @@ jobs:
       - name: Set up Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y git ccache automake flex bison build-essential libssl-dev libncurses5-dev libncursesw5-dev libelf-dev bc u-boot-tools zip unzip liblz4-tool python3 libarchive-tools
+          sudo apt-get install -y git ccache automake flex bison build-essential libssl-dev libncurses5-dev libncursesw5-dev libelf-dev bc u-boot-tools zip unzip liblz4-tool python3
 
       - name: Clone Samsung A04 Kernel Source (latest-B Branch)
         run: |
           git clone --depth=1 -b latest-B https://github.com/rsuntk-oss/android_kernel_samsung_a04m.git kernel-source
 
-      - name: Setup Proton Clang
-        uses: kdrag0n/setup-clang@master
-        with:
-          args: version 13.0
+      - name: Download Toolchain (AOSP Clang r416183b)
+        run: |
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 $GITHUB_WORKSPACE/clang-aosp
 
       - name: Integrate KernelSU-Next (Dev Branch)
         run: |
@@ -33,6 +32,7 @@ jobs:
       - name: Build Kernel Image
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
+          export PATH="$GITHUB_WORKSPACE/clang-aosp/clang-r416183b/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
