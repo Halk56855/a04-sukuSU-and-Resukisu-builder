@@ -66,12 +66,19 @@ jobs:
           export PATH="$HOME/proton-clang/bin:$PATH"
           export ARCH=arm64
           export SUBARCH=arm64
+          
+          # إعدادات Clang لبناء النواة (Kernel Space)
           export CC=clang
           export CXX=clang++
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
           export LLVM=1
           export LLVM_IAS=1
+
+          # إجبار أدوات المضيف (Host Tools) على استخدام أدوات النظام لمنع تعارض المكتبات
+          export HOSTCC=/usr/bin/gcc
+          export HOSTCXX=/usr/bin/g++
+          export HOSTLD=/usr/bin/ld
 
           # تشغيل سكريبت البناء الرئيسي الخاص بالمشروع
           ./build_kernel.sh
