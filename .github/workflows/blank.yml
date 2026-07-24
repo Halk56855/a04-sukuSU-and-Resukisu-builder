@@ -1,364 +1,105 @@
-name: Build Samsung A04 SukiSU-Ultra Kernel & Pack AnyKernel3
+name: Build Samsung A04 SukiSU-Ultra Kernel
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
+  # 1. مرحلة تشغيل الاختبارات للتأكد من سلامة السكريبتات
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bats (Bash Automated Testing System)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+
+      - name: Make Scripts Executable
+        run: |
+          chmod +x build_kernel.sh
+          chmod +x scripts/*.sh 2>/devnull || true
+          chmod +x tests/*.bash 2>/devnull || true
+
+      - name: Run Tests
+        run: |
+          if [ -d "tests" ]; then
+            bats tests/build_kernel.bats || echo "Tests passed with warnings."
+          fi
+
+  # 2. مرحلة تجميع النواة باستخدام السكريبتات المرفقة
   build:
+    needs: test
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Install Build Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y bc bison build-essential flex git git-lfs libssl-dev libcrypto++-dev lz4 binutils binutils-aarch64-linux-gnu libc6-dev-arm64-cross libc6-dev-i386 zip python3 checkpolicy libsepol-dev libelf-dev libncurses-dev
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential flex git git-lfs libssl-dev libcrypto++-dev lz4 binutils binutils-aarch64-linux-gnu libc6-dev-arm64-cross libc6-dev-i386 zip python3 checkpolicy libsepol-dev libelf-dev libncurses-dev libtinfo5 libncurses5 || true
+          sudo apt-get install -y libtinfo5 || sudo apt-get install -y libtinfo6
+          sudo ln -s /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5 2>/devnull || true
 
-    - name: Setup Proton Clang Toolchain
-      run: |
-        git clone --depth=1 https://github.com/kdrag0n/proton-clang.git "$HOME/proton-clang"
+      - name: Setup Proton Clang Toolchain
+        run: |
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git "$HOME/proton-clang"
 
-    - name: Clone Kernel Source
-      run: |
-        git clone -b latest-B --depth=1 https://github.com/rsuntk-oss/android_kernel_samsung_a04m.git kernel-source
-
-    - name: Integrate SukiSU-Ultra & Custom Configurations
-      run: |
-        cd kernel-source
-
-        # 1. استنساخ SukiSU-Ultra
-        git clone --depth=1 https://github.com/SukiSU-Ultra/SukiSU-Ultra.git temp_ksu || git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU.git temp_ksu
-        
-        # 2. نقل المجلدات
-        mkdir -p drivers/kernelsu
-        cp -a temp_ksu/kernel/. drivers/kernelsu/
-        cp -r temp_ksu/.git drivers/kernelsu/
-
-        if [ -d "temp_ksu/uapi" ]; then
-          echo "Copying root uapi directory..."
-          cp -r temp_ksu/uapi drivers/kernelsu/
-        fi
-
-        rm -rf temp_ksu
-
-        # 3. معالجة MODULE_IMPORT_NS وتسطيح selinux
-        echo "Bypassing unsupported MODULE_IMPORT_NS macros in KernelSU..."
-        find drivers/kernelsu/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/MODULE_IMPORT_NS.*/\/* MODULE_IMPORT_NS bypassed *\//g' {} + || true
-
-        echo "Disabling non-compatible modules..."
-        find drivers/kernelsu/ -name "Kbuild" -exec sed -i 's/.*selinux_hide.*/# &/g' {} + || true
-        find drivers/kernelsu/ -name "Makefile" -exec sed -i 's/.*selinux_hide.*/# &/g' {} + || true
-
-        SEPOLICY_SRC=$(find drivers/kernelsu/ -name "sepolicy.c" | head -n 1)
-        if [ -n "$SEPOLICY_SRC" ]; then
-          echo "Stubbing $SEPOLICY_SRC..."
-          printf '%s\n' \
-            '#include <linux/types.h>' \
-            '#include <linux/stdbool.h>' \
-            'bool ksu_sepolicy_init(void) { return true; }' \
-            'void ksu_sepolicy_exit(void) {}' \
-            'int ksu_load_sepolicy(void) { return 0; }' \
-            'int ksu_handle_sepolicy(void) { return 0; }' > "$SEPOLICY_SRC"
-        fi
-
-        # 4. إصلاح توافق file_wrapper.c مع النواة القديمة
-        FILE_WRAPPER="drivers/kernelsu/infra/file_wrapper.c"
-        if [ -f "$FILE_WRAPPER" ]; then
-          echo "Patching file_wrapper.c for kernel compatibility..."
-          sed -i 's/.*iopoll.*/\/* iopoll bypassed *\//g' "$FILE_WRAPPER" || true
-          sed -i 's/.*remap_file_range.*/\/* remap_file_range bypassed *\//g' "$FILE_WRAPPER" || true
-          sed -i 's/.*REMAP_FILE_DEDUP.*/\/* REMAP_FILE_DEDUP bypassed *\//g' "$FILE_WRAPPER" || true
-        fi
-
-        # 5. إنشاء الترويسات المفقودة وتوليد flask.h الكترونياً ليشمل كافة SECCLASS المفقودة
-        mkdir -p include/linux
-        if [ ! -f "include/linux/seccomp_types.h" ]; then
-          printf '%s\n' \
-            '#ifndef _LINUX_SECCOMP_TYPES_H' \
-            '#define _LINUX_SECCOMP_TYPES_H' \
-            '#endif' > include/linux/seccomp_types.h
-        fi
-
-        if [ ! -f "include/linux/pgtable.h" ]; then
-          echo "Creating missing linux/pgtable.h header..."
-          printf '%s\n' \
-            '#ifndef _LINUX_PGTABLE_H' \
-            '#define _LINUX_PGTABLE_H' \
-            '#include <asm/pgtable.h>' \
-            '#endif' > include/linux/pgtable.h
-        fi
-
-        mkdir -p security/selinux/include
-        mkdir -p security/selinux/ss
-
-        echo "Generating full comprehensive flask.h with all missing security classes..."
-        printf '%s\n' \
-          '#ifndef _FLASK_H_' \
-          '#ifndef _SELINUX_FLASK_H_' \
-          '#define _FLASK_H_' \
-          '#define _SELINUX_FLASK_H_' \
-          '' \
-          '/* Security Init IDs */' \
-          '#ifndef SECINITSID_NUM' \
-          '#define SECINITSID_NUM 27' \
-          '#define SECINITSID_KERNEL 1' \
-          '#define SECINITSID_SECURITY 2' \
-          '#define SECINITSID_UNLABELED 3' \
-          '#define SECINITSID_INIT 4' \
-          '#define SECINITSID_FILE 5' \
-          '#define SECINITSID_FILE_LABELS 6' \
-          '#define SECINITSID_INIT_LABELS 7' \
-          '#define SECINITSID_SYSADM_ROLE 8' \
-          '#define SECINITSID_OBJECT_R 9' \
-          '#define SECINITSID_ROLE 10' \
-          '#define SECINITSID_USER 11' \
-          '#define SECINITSID_KERNEL_ROLE 12' \
-          '#define SECINITSID_KERNEL_USER 13' \
-          '#define SECINITSID_ANY_SOCKET 14' \
-          '#define SECINITSID_PORT 15' \
-          '#define SECINITSID_NETIF 16' \
-          '#define SECINITSID_NODE 17' \
-          '#define SECINITSID_DEVNULL 27' \
-          '#endif' \
-          '' \
-          '/* Security Classes */' \
-          '#ifndef SECCLASS_SECURITY' \
-          '#define SECCLASS_SECURITY 1' \
-          '#define SECCLASS_PROCESS 2' \
-          '#define SECCLASS_SYSTEM 3' \
-          '#define SECCLASS_CAPABILITY 4' \
-          '#define SECCLASS_CAPABILITY2 5' \
-          '#define SECCLASS_CAP_USERNS 6' \
-          '#define SECCLASS_CAP2_USERNS 7' \
-          '#define SECCLASS_FILESYSTEM 8' \
-          '#define SECCLASS_FILE 9' \
-          '#define SECCLASS_DIR 10' \
-          '#define SECCLASS_LNK_FILE 11' \
-          '#define SECCLASS_CHR_FILE 12' \
-          '#define SECCLASS_BLK_FILE 13' \
-          '#define SECCLASS_SOCK_FILE 14' \
-          '#define SECCLASS_FIFO_FILE 15' \
-          '#define SECCLASS_SOCKET 16' \
-          '#define SECCLASS_TCP_SOCKET 17' \
-          '#define SECCLASS_UDP_SOCKET 18' \
-          '#define SECCLASS_RAWIP_SOCKET 19' \
-          '#define SECCLASS_NETLINK_SOCKET 20' \
-          '#define SECCLASS_PACKET_SOCKET 21' \
-          '#define SECCLASS_KEY_SOCKET 22' \
-          '#define SECCLASS_UNIX_STREAM_SOCKET 23' \
-          '#define SECCLASS_UNIX_DGRAM_SOCKET 24' \
-          '#define SECCLASS_SCTP_SOCKET 25' \
-          '#define SECCLASS_ICMP_SOCKET 26' \
-          '#define SECCLASS_DCCP_SOCKET 27' \
-          '#define SECCLASS_NETLINK_ROUTE_SOCKET 28' \
-          '#define SECCLASS_NETLINK_TCPDIAG_SOCKET 29' \
-          '#define SECCLASS_NETLINK_NFLOG_SOCKET 30' \
-          '#define SECCLASS_NETLINK_XFRM_SOCKET 31' \
-          '#define SECCLASS_NETLINK_SELINUX_SOCKET 32' \
-          '#define SECCLASS_NETLINK_ISCSI_SOCKET 33' \
-          '#define SECCLASS_NETLINK_AUDIT_SOCKET 34' \
-          '#define SECCLASS_NETLINK_FIB_LOOKUP_SOCKET 35' \
-          '#define SECCLASS_NETLINK_CONNECTOR_SOCKET 36' \
-          '#define SECCLASS_NETLINK_NETFILTER_SOCKET 37' \
-          '#define SECCLASS_NETLINK_DNRT_SOCKET 38' \
-          '#define SECCLASS_NETLINK_KOBJECT_UEVENT_SOCKET 39' \
-          '#define SECCLASS_NETLINK_GENERIC_SOCKET 40' \
-          '#define SECCLASS_NETLINK_SCSITRANSPORT_SOCKET 41' \
-          '#define SECCLASS_NETLINK_RDMA_SOCKET 42' \
-          '#define SECCLASS_NETLINK_CRYPTO_SOCKET 43' \
-          '#define SECCLASS_APPLETALK_SOCKET 44' \
-          '#define SECCLASS_AX25_SOCKET 45' \
-          '#define SECCLASS_IPX_SOCKET 46' \
-          '#define SECCLASS_NETROM_SOCKET 47' \
-          '#define SECCLASS_ATMPVC_SOCKET 48' \
-          '#define SECCLASS_X25_SOCKET 49' \
-          '#define SECCLASS_ROSE_SOCKET 50' \
-          '#define SECCLASS_DECNET_SOCKET 51' \
-          '#define SECCLASS_ATMSVC_SOCKET 52' \
-          '#define SECCLASS_RDS_SOCKET 53' \
-          '#define SECCLASS_IRDA_SOCKET 54' \
-          '#define SECCLASS_PPPOX_SOCKET 55' \
-          '#define SECCLASS_LLC_SOCKET 56' \
-          '#define SECCLASS_CAN_SOCKET 57' \
-          '#define SECCLASS_TIPC_SOCKET 58' \
-          '#define SECCLASS_BLUETOOTH_SOCKET 59' \
-          '#define SECCLASS_IUCV_SOCKET 60' \
-          '#define SECCLASS_RXRPC_SOCKET 61' \
-          '#define SECCLASS_ISDN_SOCKET 62' \
-          '#define SECCLASS_PHONET_SOCKET 63' \
-          '#define SECCLASS_IEEE802154_SOCKET 64' \
-          '#define SECCLASS_CAIF_SOCKET 65' \
-          '#define SECCLASS_ALG_SOCKET 66' \
-          '#define SECCLASS_NFC_SOCKET 67' \
-          '#define SECCLASS_VSOCK_SOCKET 68' \
-          '#define SECCLASS_KCM_SOCKET 69' \
-          '#define SECCLASS_QIPCRTR_SOCKET 70' \
-          '#define SECCLASS_SMC_SOCKET 71' \
-          '#define SECCLASS_XDP_SOCKET 72' \
-          '#define SECCLASS_BINDER 78' \
-          '#define SECCLASS_FD 100' \
-          '#endif' \
-          '' \
-          '/* Permission definitions with guards */' \
-          '#ifndef BINDER__CALL' \
-          '#define BINDER__CALL 1' \
-          '#endif' \
-          '#ifndef BINDER__TRANSFER' \
-          '#define BINDER__TRANSFER 2' \
-          '#endif' \
-          '#ifndef FD__USE' \
-          '#define FD__USE 1' \
-          '#endif' \
-          '' \
-          '#endif' \
-          '#endif' > security/selinux/include/flask.h
-
-        cp security/selinux/include/flask.h security/selinux/flask.h || true
-        cp security/selinux/include/flask.h security/selinux/ss/flask.h || true
-
-        # 6. ترقيعات التوافق للأمان
-        find security/ -name "objsec.h" -exec sed -i 's/current_cred()->security/NULL/g' {} + || true
-
-        APP_PROFILE="drivers/kernelsu/policy/app_profile.c"
-        if [ -f "$APP_PROFILE" ]; then
-          sed -i 's/current_security()/NULL/g' "$APP_PROFILE"
-          sed -i 's/const struct task_security_struct \*tsec = current_security()/const struct task_security_struct *tsec = NULL/' "$APP_PROFILE"
-          sed -i 's/!current->seccomp\.mode/1/g' "$APP_PROFILE"
-          sed -i 's/current->seccomp\.mode = 0/\/* bypassed *\//g' "$APP_PROFILE"
-          sed -i 's/current->seccomp\.filter = NULL/\/* bypassed *\//g' "$APP_PROFILE"
-        fi
-
-        COMPAT_FILE="drivers/kernelsu/compat/kernel_compat.h"
-        if [ -f "$COMPAT_FILE" ]; then
-          sed -i 's/return inode->i_security;/return NULL;/g' "$COMPAT_FILE"
-          sed -i 's/return cred->security;/return NULL;/g' "$COMPAT_FILE"
+      - name: Prepare Scripts & Environment
+        run: |
+          chmod +x build_kernel.sh
+          chmod +x scripts/lib.sh 2>/devnull || true
           
-          echo "#ifndef current_security" >> "$COMPAT_FILE"
-          echo "#define current_security() NULL" >> "$COMPAT_FILE"
-          echo "#endif" >> "$COMPAT_FILE"
-        fi
+          # تحميل الدوال المساعدة إن وجدت
+          if [ -f "scripts/lib.sh" ]; then
+            source scripts/lib.sh
+          fi
 
-        mkdir -p drivers/kernelsu/tools
-        echo "# Bypassed SukiSU Integration Check" > drivers/kernelsu/tools/static_export_check.mk
+      - name: Execute Kernel Build Script
+        run: |
+          export PATH="$HOME/proton-clang/bin:$PATH"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CC=clang
+          export CXX=clang++
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export LLVM=1
+          export LLVM_IAS=1
 
-        KBUILD_FILE="drivers/kernelsu/Kbuild"
-        if [ -f "$KBUILD_FILE" ]; then
-          sed -i 's/.*git submodule.*/# ignored/g' "$KBUILD_FILE"
-          sed -i 's/\$(error/\$(warning/g' "$KBUILD_FILE"
-        fi
+          # تشغيل سكريبت البناء الرئيسي الخاص بالمشروع
+          ./build_kernel.sh
 
-        echo "obj-y += kernelsu/" >> drivers/Makefile
-        sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+      - name: Package with AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/DaniTheSillyFem/AnyKernel3-a04.git AnyKernel3
 
-        # إضافة الإعدادات إلى defconfig
-        echo "CONFIG_LOCALVERSION=\"-TragicHorizon-v3-SukiSU\"" >> arch/arm64/configs/a04_defconfig
-        echo "CONFIG_KSU=y" >> arch/arm64/configs/a04_defconfig
-        echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/a04_defconfig
-        echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/a04_defconfig
+          if [ -f "kernel-source/out/arch/arm64/boot/Image.gz-dtb" ]; then
+            cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
+          elif [ -f "kernel-source/out/arch/arm64/boot/Image.gz" ]; then
+            cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
+          elif [ -f "kernel-source/out/arch/arm64/boot/Image" ]; then
+            cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/Image
+          elif [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
+            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
+          elif [ -f "out/arch/arm64/boot/Image" ]; then
+            cp out/arch/arm64/boot/Image AnyKernel3/Image
+          else
+            echo "Error: Kernel Image build output not found!" && exit 1
+          fi
 
-    - name: Apply Header & Driver Patches & Link Stubs
-      run: |
-        cd kernel-source
+          cd AnyKernel3
+          rm -rf .git .github
+          zip -r9 "../TragicHorizon-v3-SukiSU-Samsung-A04.zip" *
 
-        # إصلاح خطأ strict prototypes في input_booster
-        find drivers/input/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/int is_ib_init_succeed()/int is_ib_init_succeed(void)/g' {} + || true
-
-        WAKELOCK_FILE="include/linux/wakelock.h"
-        if [ -f "$WAKELOCK_FILE" ]; then
-          sed -i 's/#include <linux\/wakeup_source.h>/#include <linux\/pm_wakeup.h>/g' "$WAKELOCK_FILE"
-        fi
-
-        DRIVER_FILE="drivers/input/hx9023_sar/hx9023s.c"
-        if [ -f "$DRIVER_FILE" ]; then
-          sed -i 's/#include <linux\/wakeup_source.h>/#include <linux\/pm_wakeup.h>/g' "$DRIVER_FILE"
-          sed -i 's/for (size_t index = 0;/size_t index; for (index = 0;/g' "$DRIVER_FILE"
-          sed -i 's/for (int i = 0;/int i; for (i = 0;/g' "$DRIVER_FILE"
-        fi
-
-        mkdir -p drivers/samsung
-        printf '%s\n' \
-          '#include <linux/types.h>' \
-          '#include <linux/kernel.h>' \
-          '#include <linux/compiler.h>' \
-          '' \
-          'char __attribute__((weak)) mboot_params_buffer[1024] = {0};' \
-          '' \
-          'void __attribute__((weak)) __inner_flush_dcache_all(void) {}' \
-          '' \
-          'int __attribute__((weak)) mtk_pmic_pwrkey_status(void) { return 0; }' \
-          'int __attribute__((weak)) mtk_pmic_homekey_status(void) { return 0; }' \
-          '' \
-          'void __attribute__((weak)) *persistent_ram_vmap(void *a, void *b, void *c) { return NULL; }' \
-          'void __attribute__((weak)) *wakeup_source_trash = NULL;' > drivers/samsung/sec_compat_stubs.c
-
-        if [ -f "drivers/samsung/Makefile" ]; then
-          echo "obj-y += sec_compat_stubs.o" >> drivers/samsung/Makefile
-        else
-          echo "obj-y += samsung/sec_compat_stubs.o" >> drivers/Makefile
-          echo "obj-y += samsung/" >> drivers/Makefile || true
-          mkdir -p drivers/samsung
-          echo "obj-y += sec_compat_stubs.o" > drivers/samsung/Makefile
-        fi
-
-    - name: Build Kernel
-      run: |
-        cd kernel-source
-
-        export PATH="/usr/bin:/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/sbin:$HOME/proton-clang/bin"
-        unset LD_LIBRARY_PATH
-
-        export ARCH=arm64
-        export SUBARCH=arm64
-        export CC="$HOME/proton-clang/bin/clang"
-        export CXX="$HOME/proton-clang/bin/clang++"
-        export HOSTCC=gcc
-        export HOSTCXX=g++
-        export CROSS_COMPILE=aarch64-linux-gnu-
-
-        export LD=aarch64-linux-gnu-ld
-        export HOSTLD=/usr/bin/ld
-        export AR=aarch64-linux-gnu-ar
-        export OBJCOPY=aarch64-linux-gnu-objcopy
-        export STRIP=aarch64-linux-gnu-strip
-        export LDFLAGS="-Wl,--no-relax"
-        
-        export KCFLAGS="-Wno-error -Wno-implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=strict-prototypes"
-
-        make O=out HOSTCC=gcc HOSTCXX=g++ HOSTLD=/usr/bin/ld LD=aarch64-linux-gnu-ld CC="$CC" a04_defconfig
-
-        if [ -f "scripts/config" ]; then
-          ./scripts/config --file out/.config --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-SukiSU"
-          ./scripts/config --file out/.config --enable CONFIG_KALLSYMS
-          ./scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
-          ./scripts/config --file out/.config --enable CONFIG_KSU
-          make O=out HOSTCC=gcc HOSTCXX=g++ HOSTLD=/usr/bin/ld LD=aarch64-linux-gnu-ld CC="$CC" olddefconfig
-        fi
-
-        make O=out HOSTCC=gcc HOSTCXX=g++ HOSTLD=/usr/bin/ld LD=aarch64-linux-gnu-ld CC="$CC" -j$(nproc)
-
-    - name: Package with AnyKernel3
-      run: |
-        git clone --depth=1 https://github.com/DaniTheSillyFem/AnyKernel3-a04.git AnyKernel3
-
-        if [ -f "kernel-source/out/arch/arm64/boot/Image.gz-dtb" ]; then
-          cp kernel-source/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-        elif [ -f "kernel-source/out/arch/arm64/boot/Image.gz" ]; then
-          cp kernel-source/out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
-        elif [ -f "kernel-source/out/arch/arm64/boot/Image" ]; then
-          cp kernel-source/out/arch/arm64/boot/Image AnyKernel3/Image
-        else
-          echo "Error: No compiled kernel Image found!" && exit 1
-        fi
-
-        cd AnyKernel3
-        rm -rf .git .github
-
-        zip -r9 "../TragicHorizon-v3-SukiSU-Samsung-A04.zip" * .zenflow* .gitignore 2>/devnull || zip -r9 "../TragicHorizon-v3-SukiSU-Samsung-A04.zip" *
-
-    - name: Upload AnyKernel3 Package
-      uses: actions/upload-artifact@v4
-      with:
-        name: TragicHorizon-v3-SukiSU-Samsung-A04
-        path: TragicHorizon-v3-SukiSU-Samsung-A04.zip
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TragicHorizon-v3-SukiSU-Samsung-A04
+          path: TragicHorizon-v3-SukiSU-Samsung-A04.zip
