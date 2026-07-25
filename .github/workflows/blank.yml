@@ -21,14 +21,14 @@ jobs:
 
       - name: Clone & Hook ReSukiSU Source
         run: |
-          git clone https://github.com/rsuntk/resukisu-common.git drivers/resukisu || true
-          if [ -d "drivers/resukisu" ]; then
-            if ! grep -q "resukisu" drivers/Kconfig; then
-              echo 'source "drivers/resukisu/Kconfig"' >> drivers/Kconfig
-            fi
-            if ! grep -q "resukisu" drivers/Makefile; then
-              echo 'obj-y += resukisu/' >> drivers/Makefile
-            fi
+          git clone https://github.com/rsuntk/resukisu-common.git drivers/resukisu
+          
+          # ربط Kconfig و Makefile الخاص بـ ReSukiSU
+          if ! grep -q "resukisu" drivers/Kconfig; then
+            echo 'source "drivers/resukisu/Kconfig"' >> drivers/Kconfig
+          fi
+          if ! grep -q "resukisu" drivers/Makefile; then
+            echo 'obj-$(CONFIG_RESUKISU) += resukisu/' >> drivers/Makefile
           fi
 
       - name: Set Custom Kernel Version & Localversion
@@ -37,6 +37,8 @@ jobs:
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 19/' Makefile
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 325/' Makefile
           
+          # تفعيل ReSukiSU وإعداد النسخة في ملف التكوين
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_RESUKISU y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-r1"
 
       - name: Setup Kernel Config
