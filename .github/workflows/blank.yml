@@ -32,23 +32,12 @@ jobs:
 
       - name: Setup Kernel Config
         run: |
-          export ARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          make O=out rsuntk-a04_defconfig
+          make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- rsuntk-a04_defconfig
 
       - name: Build Kernel Image
         run: |
-          export ARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          make O=out \
-               CC=clang \
-               LD=ld.lld \
-               AR=llvm-ar \
-               NM=llvm-nm \
-               OBJCOPY=llvm-objcopy \
-               OBJDUMP=llvm-objdump \
-               STRIP=llvm-strip \
-               -j$(nproc)
+          # تمرير المتغيرات داخل أمر make مباشرة لمنع تجاهلها
+          make O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC=clang OBJDUMP=llvm-objdump -j$(nproc)
 
       - name: Pack Kernel with AnyKernel3
         run: |
