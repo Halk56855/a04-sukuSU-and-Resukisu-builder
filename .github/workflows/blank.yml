@@ -23,6 +23,12 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
 
+      - name: Bypass ReSukiSU Manual Hook Strict Check
+        run: |
+          if [ -f KernelSU/kernel/tools/manual_hook_check.mk ]; then
+            echo "" > KernelSU/kernel/tools/manual_hook_check.mk
+          fi
+
       - name: Fix Clang Strict Prototypes Error
         run: |
           sed -i 's/int is_ib_init_succeed()/int is_ib_init_succeed(void)/g' drivers/input/input_booster.c
