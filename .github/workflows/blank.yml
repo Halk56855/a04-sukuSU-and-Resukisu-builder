@@ -10,6 +10,8 @@ jobs:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
+          repository: Samsung-Galaxy-G85-JDM/kernel_samsung_a05m
+          ref: linux-4.19.y
           submodules: recursive
 
       - name: Setup Build Environment
@@ -25,7 +27,7 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          make O=out mediatek_debug_defconfig || make O=out k79v1_64_defconfig || make O=out a04_defconfig
+          make O=out rsuntk-a04_defconfig
 
       - name: Build Kernel Image
         run: |
