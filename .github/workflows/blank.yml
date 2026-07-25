@@ -17,19 +17,11 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache flex git libssl-dev make python3 wget zip clang lld llvm g++-aarch64-linux-gnu gcc-aarch64-linux-gnu
+          sudo apt-get install -y bc bison build-essential ccache flex git libssl-dev make python3 wget zip clang lld llvm g++-aarch64-linux-gnu gcc-aarch64-linux-gnu curl
 
-      - name: Clone & Hook ReSukiSU Source
+      - name: Setup ReSukiSU (Official Setup Script)
         run: |
-          git clone https://github.com/rsuntk/resukisu-common.git drivers/resukisu
-          
-          # ربط Kconfig و Makefile الخاص بـ ReSukiSU
-          if ! grep -q "resukisu" drivers/Kconfig; then
-            echo 'source "drivers/resukisu/Kconfig"' >> drivers/Kconfig
-          fi
-          if ! grep -q "resukisu" drivers/Makefile; then
-            echo 'obj-$(CONFIG_RESUKISU) += resukisu/' >> drivers/Makefile
-          fi
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
 
       - name: Set Custom Kernel Version & Localversion
         run: |
@@ -37,8 +29,8 @@ jobs:
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 19/' Makefile
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 325/' Makefile
           
-          # تفعيل ReSukiSU وإعداد النسخة في ملف التكوين
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_RESUKISU y
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU y
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU_MANUAL_HOOK y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-r1"
 
       - name: Setup Kernel Config
