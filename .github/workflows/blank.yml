@@ -64,6 +64,8 @@ jobs:
           sed -i '/tpm/d' drivers/char/Kconfig || true
           sed -i '/xilinx_hwicap/d' drivers/char/Kconfig || true
           sed -i '/xillybus/d' drivers/char/Kconfig || true
+          
+          sed -i '/agp/d' drivers/video/Kconfig || true
 
       - name: Apply ReSukiSU Static Symbol Fixes (SELinux)
         run: |
