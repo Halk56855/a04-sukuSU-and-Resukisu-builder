@@ -114,6 +114,13 @@ jobs:
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS_ALL y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_WERROR
+          
+          # Disable GKI hidden DRM configs and enable DRM in defconfig template
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_GKI_HIDDEN_DRM_CONFIGS || true
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_DRM y || true
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_DRM_MIPI_DSI y || true
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_DRM_GEM_CMA_HELPER y || true
+          
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-r1"
 
       - name: Setup Kernel Config
@@ -122,8 +129,11 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           make O=out rsuntk-a04_defconfig
           
-          # Force disable GKI hidden DRM configs directly in output config and resolve dependencies
+          # Force fix dependencies in output config
           ./scripts/config --file out/.config --disable CONFIG_GKI_HIDDEN_DRM_CONFIGS || true
+          ./scripts/config --file out/.config --set-val CONFIG_DRM y || true
+          ./scripts/config --file out/.config --set-val CONFIG_DRM_MIPI_DSI y || true
+          ./scripts/config --file out/.config --set-val CONFIG_DRM_GEM_CMA_HELPER y || true
           yes '' | make O=out olddefconfig || true
 
       - name: Build Kernel Image
