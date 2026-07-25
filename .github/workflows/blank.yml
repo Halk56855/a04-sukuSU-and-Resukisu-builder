@@ -1,4 +1,4 @@
-name: Build Samsung A04 Kernel with ReSukiSU
+name: Build Samsung A04 Kernel with TragicHorizon & AnyKernel3
 
 on:
   workflow_dispatch:
@@ -17,13 +17,20 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache flex g++-aarch64-linux-gnu gcc-aarch64-linux-gnu git libssl-dev make python3 wget zip clang lld
+          sudo apt-get install -y bc bison build-essential ccache flex git libssl-dev make python3 wget zip clang lld llvm
 
       - name: Clone ReSukiSU Source
         run: |
           git clone https://github.com/rsuntk/resukisu-common.git drivers/resukisu || true
 
-      - name: Setup Kernel Config & Integrate Hooks
+      - name: Set Custom Kernel Version & Localversion
+        run: |
+          sed -i 's/^VERSION =.*/VERSION = 4/' Makefile
+          sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 19/' Makefile
+          sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 325/' Makefile
+          echo "CONFIG_LOCALVERSION=\"-TragicHorizon-v3-r1\"" >> arch/arm64/configs/rsuntk-a04_defconfig
+
+      - name: Setup Kernel Config
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
@@ -33,12 +40,27 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          export CC=clang
-          export LD=ld.lld
-          make O=out -j$(nproc)
+          make O=out \
+               CC=clang \
+               LD=ld.lld \
+               AR=llvm-ar \
+               NM=llvm-nm \
+               OBJCOPY=llvm-objcopy \
+               OBJDUMP=llvm-objdump \
+               STRIP=llvm-strip \
+               -j$(nproc)
 
-      - name: Upload Built Image (boot.img / Image)
+      - name: Pack Kernel with AnyKernel3
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+          cp out/arch/arm64/boot/Image AnyKernel3/
+          cd AnyKernel3
+          sed -i 's/BLOCK=.*/BLOCK=auto;/' anykernel.sh
+          sed -i 's/IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=0;/' anykernel.sh
+          zip -r9 ../AnyKernel3-TragicHorizon-A04.zip * -x .git* README.md *placeholder
+
+      - name: Upload AnyKernel3 Package
         uses: actions/upload-artifact@v4
         with:
-          name: Samsung-A04-ReSukiSU-Boot
-          path: out/arch/arm64/boot/Image
+          name: AnyKernel3-TragicHorizon-v3-r1-A04
+          path: AnyKernel3-TragicHorizon-A04.zip
