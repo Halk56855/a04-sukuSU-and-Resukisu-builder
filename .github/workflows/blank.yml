@@ -19,18 +19,15 @@ jobs:
 
       - name: Clone RKSU / KernelSU Source
         run: |
-          # هنا يتم جلب شيفرة الروت وربطها بنواة 4.19
           git clone https://github.com/rsuntk/rksu-common.git drivers/rksu || true
 
       - name: Setup Kernel Config & Integrate Hooks
         run: |
-          # تطبيق إعدادات معالج سامسونج واستهداف النواة 4.19
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           
-          # ضبط متغيرات البناء (يُرجى التأكد من اسم ملف الـ defconfig الخاص بهاتفك داخل arch/arm64/configs)
-          # غالباً أجهزة A04 تعتمد على defconfig خاص بمعالجات MTK
-          make O=out a04m_defconfig || make O=out mtk_defconfig
+          # استخدام ملف التكوين الصحيح الخاص بهاتف A04
+          make O=out a04_defconfig
 
       - name: Build Kernel Image
         run: |
