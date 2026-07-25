@@ -37,6 +37,15 @@ jobs:
         run: |
           sed -i '1i #pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"' include/linux/cgroup-defs.h
 
+      - name: Remove Problematic Touchscreen and Input Drivers
+        run: |
+          rm -rf drivers/input/touchscreen/gt9895
+          rm -rf drivers/input/aw9610x_sar
+          sed -i '/gt9895/d' drivers/input/touchscreen/Makefile || true
+          sed -i '/gt9895/d' drivers/input/touchscreen/Kconfig || true
+          sed -i '/aw9610x_sar/d' drivers/input/Makefile || true
+          sed -i '/aw9610x_sar/d' drivers/input/Kconfig || true
+
       - name: Completely Remove All Mediatek Drivers and References
         run: |
           rm -rf drivers/input/touchscreen/mediatek
