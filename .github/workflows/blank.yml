@@ -41,10 +41,14 @@ jobs:
         run: |
           rm -rf drivers/input/touchscreen/gt9895
           rm -rf drivers/input/aw9610x_sar
+          rm -rf drivers/input/hx9031a_sar
+          
           sed -i '/gt9895/d' drivers/input/touchscreen/Makefile || true
           sed -i '/gt9895/d' drivers/input/touchscreen/Kconfig || true
           sed -i '/aw9610x_sar/d' drivers/input/Makefile || true
           sed -i '/aw9610x_sar/d' drivers/input/Kconfig || true
+          sed -i '/hx9031a_sar/d' drivers/input/Makefile || true
+          sed -i '/hx9031a_sar/d' drivers/input/Kconfig || true
 
       - name: Completely Remove All Mediatek Drivers and References
         run: |
