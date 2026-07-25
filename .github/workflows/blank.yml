@@ -29,8 +29,7 @@ jobs:
 
       - name: Apply ReSukiSU Static Symbol Fixes (SELinux)
         run: |
-          # إزالة static من الرموز الثابتة المطلوبة لـ ReSukiSU في ملفات SELinux لمنع فشل التجميع
-          find security/selinux/ -type f -name "*.c" | while read -file; do
+          find security/selinux/ -type f -name "*.c" | while read -r file; do
             sed -i 's/static const struct file_operations sel_handle_status_ops/const struct file_operations sel_handle_status_ops/g' "$file" || true
             sed -i 's/static DEFINE_MUTEX(sel_mutex);/DEFINE_MUTEX(sel_mutex);/g' "$file" || true
             sed -i 's/static DEFINE_RWLOCK(policy_rwlock);/DEFINE_RWLOCK(policy_rwlock);/g' "$file" || true
@@ -45,7 +44,6 @@ jobs:
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 19/' Makefile
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 325/' Makefile
           
-          # تفعيل خيارات KSU والخطافات اليدوية وتكوينات الرموز
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU_MANUAL_HOOK y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS y
@@ -74,6 +72,7 @@ jobs:
             STRIP=llvm-strip \
             LLVM=1 \
             LLVM_IAS=1 \
+            KCFLAGS="-Wno-error" \
             -j$(nproc) Image.gz || make O=out \
             CC=clang \
             LD=ld.lld \
@@ -84,6 +83,7 @@ jobs:
             STRIP=llvm-strip \
             LLVM=1 \
             LLVM_IAS=1 \
+            KCFLAGS="-Wno-error" \
             -j$(nproc) Image
 
       - name: Pack Kernel with AnyKernel3
