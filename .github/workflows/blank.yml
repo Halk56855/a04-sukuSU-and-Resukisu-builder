@@ -72,7 +72,7 @@ jobs:
             STRIP=llvm-strip \
             LLVM=1 \
             LLVM_IAS=1 \
-            KCFLAGS="-Wno-error" \
+            KCFLAGS="-Wno-error -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-strict-prototypes" \
             -j$(nproc) Image.gz || make O=out \
             CC=clang \
             LD=ld.lld \
@@ -83,7 +83,7 @@ jobs:
             STRIP=llvm-strip \
             LLVM=1 \
             LLVM_IAS=1 \
-            KCFLAGS="-Wno-error" \
+            KCFLAGS="-Wno-error -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-strict-prototypes" \
             -j$(nproc) Image
 
       - name: Pack Kernel with AnyKernel3
