@@ -114,8 +114,13 @@ jobs:
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS_ALL y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_WERROR
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_GKI_HIDDEN_DRM_CONFIGS || true
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_DRM y || true
+          
+          # Fix DRM dependencies conflicts completely
+          sed -i '/CONFIG_GKI_HIDDEN_DRM_CONFIGS/d' arch/arm64/configs/rsuntk-a04_defconfig || true
+          echo "CONFIG_DRM=y" >> arch/arm64/configs/rsuntk-a04_defconfig
+          echo "CONFIG_DRM_MIPI_DSI=y" >> arch/arm64/configs/rsuntk-a04_defconfig
+          echo "CONFIG_DRM_GEM_CMA_HELPER=y" >> arch/arm64/configs/rsuntk-a04_defconfig
+          
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-r1"
 
       - name: Setup Kernel Config
