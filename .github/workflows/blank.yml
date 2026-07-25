@@ -1,4 +1,4 @@
-name: Build Samsung A04 Kernel with RKSU
+name: Build Samsung A04 Kernel with ReSukiSU
 
 on:
   workflow_dispatch:
@@ -17,11 +17,11 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache flex g++-aarch64-linux-gnu gcc-aarch64-linux-gnu git libssl-dev make python3 wget zip
+          sudo apt-get install -y bc bison build-essential ccache flex g++-aarch64-linux-gnu gcc-aarch64-linux-gnu git libssl-dev make python3 wget zip clang lld
 
-      - name: Clone RKSU / KernelSU Source
+      - name: Clone ReSukiSU Source
         run: |
-          git clone https://github.com/rsuntk/rksu-common.git drivers/rksu || true
+          git clone https://github.com/rsuntk/resukisu-common.git drivers/resukisu || true
 
       - name: Setup Kernel Config & Integrate Hooks
         run: |
@@ -33,10 +33,12 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
+          export CC=clang
+          export LD=ld.lld
           make O=out -j$(nproc)
 
       - name: Upload Built Image (boot.img / Image)
         uses: actions/upload-artifact@v4
         with:
-          name: Samsung-A04-RKSU-Boot
+          name: Samsung-A04-ReSukiSU-Boot
           path: out/arch/arm64/boot/Image
