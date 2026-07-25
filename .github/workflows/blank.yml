@@ -27,6 +27,10 @@ jobs:
         run: |
           sed -i 's/int is_ib_init_succeed()/int is_ib_init_succeed(void)/g' drivers/input/input_booster.c
 
+      - name: Exclude Problematic Chipone TDDI Touchscreen Driver
+        run: |
+          sed -i '/chipone-tddi/d' drivers/input/touchscreen/mediatek/Makefile || true
+
       - name: Apply ReSukiSU Static Symbol Fixes (SELinux)
         run: |
           find security/selinux/ -type f -name "*.c" | while read -r file; do
