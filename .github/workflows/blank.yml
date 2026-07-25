@@ -1,4 +1,4 @@
-name: Build Samsung A04 Kernel (rsuntk-oss)
+name: Build Samsung A04 Kernel with KernelSU-Next
 
 on:
   workflow_dispatch:
@@ -16,15 +16,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git ccache automake flex bison build-essential libssl-dev libncurses5-dev libncursesw5-dev libelf-dev bc u-boot-tools zip unzip liblz4-tool python3
 
-      - name: Clone Samsung A04 Kernel Source (latest-B Branch)
+      - name: Clone Samsung A04 Kernel Source
         run: |
-          git clone --depth=1 -b latest-B https://github.com/rsuntk-oss/android_kernel_samsung_a04m.git kernel-source
+          git clone --depth=1 -b linux-4.19.y https://github.com/Samsung-Galaxy-G85-JDM/kernel_samsung_a05m.git kernel-source
 
       - name: Download Toolchain (AOSP Clang r416183b)
         run: |
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 $GITHUB_WORKSPACE/clang-aosp
 
-      - name: Integrate KernelSU-Next (Legacy Branch)
+      - name: Integrate KernelSU-Next (Legacy Branch for 4.19)
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
@@ -39,7 +39,7 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
           export CC=clang
 
-          # إعداد وتجميع النواة
+          # ملف إعدادات A04 (a04_defconfig / a04m_defconfig)
           make O=out a04m_defconfig || make O=out a04_defconfig || make O=out a04m_eur_open_defconfig
           make -j$(nproc) O=out
 
@@ -48,7 +48,7 @@ jobs:
           git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
           cd AnyKernel3
           
-          # نسخ ملف النواة الناتج
+          # نسخ ملف النواة الخاص بـ A04
           if [ -f ../kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
             cp ../kernel-source/out/arch/arm64/boot/Image.gz-dtb .
           elif [ -f ../kernel-source/out/arch/arm64/boot/Image.gz ]; then
@@ -57,10 +57,10 @@ jobs:
             cp ../kernel-source/out/arch/arm64/boot/Image .
           fi
 
-          zip -r9 ../KernelSU-Next-A04M.zip * -x .git README.md
+          zip -r9 ../KernelSU-Next-A04.zip * -x .git README.md
 
       - name: Upload Kernel ZIP Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: KernelSU-Next-Samsung-A04M
-          path: KernelSU-Next-A04M.zip
+          name: KernelSU-Next-Samsung-A04
+          path: KernelSU-Next-A04.zip
