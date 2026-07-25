@@ -1,7 +1,7 @@
 name: Build Samsung A04 Kernel with RKSU
 
 on:
-  workflow_dispatch: # يتيح لك تشغيل البناء يدوياً من زر Run workflow
+  workflow_dispatch:
 
 jobs:
   build:
@@ -25,8 +25,6 @@ jobs:
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          
-          # استخدام ملف التكوين الصحيح الخاص بهاتف A04
           make O=out a04_defconfig
 
       - name: Build Kernel Image
