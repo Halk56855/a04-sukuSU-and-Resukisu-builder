@@ -43,6 +43,18 @@ jobs:
           sed -i '/mediatek/d' drivers/mmc/host/Makefile || true
           sed -i '/mediatek/d' drivers/mmc/host/Kconfig || true
 
+      - name: Remove Unused Char Drivers Causing Clang Errors
+        run: |
+          rm -rf drivers/char/agp drivers/char/hw_random drivers/char/ipmi drivers/char/mwave drivers/char/pcmcia drivers/char/tpm drivers/char/xilinx_hwicap drivers/char/xillybus
+          sed -i '/agp/d' drivers/char/Makefile || true
+          sed -i '/hw_random/d' drivers/char/Makefile || true
+          sed -i '/ipmi/d' drivers/char/Makefile || true
+          sed -i '/mwave/d' drivers/char/Makefile || true
+          sed -i '/pcmcia/d' drivers/char/Makefile || true
+          sed -i '/tpm/d' drivers/char/Makefile || true
+          sed -i '/xilinx_hwicap/d' drivers/char/Makefile || true
+          sed -i '/xillybus/d' drivers/char/Makefile || true
+
       - name: Apply ReSukiSU Static Symbol Fixes (SELinux)
         run: |
           find security/selinux/ -type f -name "*.c" | while read -r file; do
@@ -64,6 +76,7 @@ jobs:
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU_MANUAL_HOOK y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS_ALL y
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_WERROR
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-r1"
 
       - name: Setup Kernel Config
@@ -89,6 +102,7 @@ jobs:
             LLVM=1 \
             LLVM_IAS=1 \
             KCFLAGS="-Wno-error -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-strict-prototypes" \
+            KBUILD_CFLAGS="-Wno-error" \
             -j$(nproc) Image.gz || make O=out \
             CC=clang \
             LD=ld.lld \
@@ -100,6 +114,7 @@ jobs:
             LLVM=1 \
             LLVM_IAS=1 \
             KCFLAGS="-Wno-error -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-strict-prototypes" \
+            KBUILD_CFLAGS="-Wno-error" \
             -j$(nproc) Image
 
       - name: Pack Kernel with AnyKernel3
