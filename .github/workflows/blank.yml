@@ -37,7 +37,7 @@ jobs:
         run: |
           sed -i '1i #pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"' include/linux/cgroup-defs.h
 
-      - name: Completely Remove Mediatek Drivers and References
+      - name: Completely Remove All Mediatek Drivers and References
         run: |
           rm -rf drivers/input/touchscreen/mediatek
           sed -i '/mediatek/d' drivers/input/touchscreen/Makefile || true
@@ -46,6 +46,10 @@ jobs:
           rm -rf drivers/mmc/host/mediatek
           sed -i '/mediatek/d' drivers/mmc/host/Makefile || true
           sed -i '/mediatek/d' drivers/mmc/host/Kconfig || true
+
+          rm -rf drivers/misc/mediatek
+          sed -i '/mediatek/d' drivers/misc/Makefile || true
+          sed -i '/mediatek/d' drivers/misc/Kconfig || true
 
       - name: Remove Unused Char Drivers Causing Clang Errors
         run: |
