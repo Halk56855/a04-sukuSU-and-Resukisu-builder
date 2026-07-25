@@ -22,8 +22,13 @@ jobs:
       - name: Clone & Hook ReSukiSU Source
         run: |
           git clone https://github.com/rsuntk/resukisu-common.git drivers/resukisu || true
-          if ! grep -q "resukisu" drivers/Makefile; then
-            echo "obj-y += resukisu/" >> drivers/Makefile
+          if [ -d "drivers/resukisu" ]; then
+            if ! grep -q "resukisu" drivers/Kconfig; then
+              echo 'source "drivers/resukisu/Kconfig"' >> drivers/Kconfig
+            fi
+            if ! grep -q "resukisu" drivers/Makefile; then
+              echo 'obj-y += resukisu/' >> drivers/Makefile
+            fi
           fi
 
       - name: Set Custom Kernel Version & Localversion
