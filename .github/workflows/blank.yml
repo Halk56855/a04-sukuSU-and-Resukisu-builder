@@ -46,6 +46,7 @@ jobs:
       - name: Remove Unused Char Drivers Causing Clang Errors
         run: |
           rm -rf drivers/char/agp drivers/char/hw_random drivers/char/ipmi drivers/char/mwave drivers/char/pcmcia drivers/char/tpm drivers/char/xilinx_hwicap drivers/char/xillybus
+          
           sed -i '/agp/d' drivers/char/Makefile || true
           sed -i '/hw_random/d' drivers/char/Makefile || true
           sed -i '/ipmi/d' drivers/char/Makefile || true
@@ -54,6 +55,15 @@ jobs:
           sed -i '/tpm/d' drivers/char/Makefile || true
           sed -i '/xilinx_hwicap/d' drivers/char/Makefile || true
           sed -i '/xillybus/d' drivers/char/Makefile || true
+          
+          sed -i '/agp/d' drivers/char/Kconfig || true
+          sed -i '/hw_random/d' drivers/char/Kconfig || true
+          sed -i '/ipmi/d' drivers/char/Kconfig || true
+          sed -i '/mwave/d' drivers/char/Kconfig || true
+          sed -i '/pcmcia/d' drivers/char/Kconfig || true
+          sed -i '/tpm/d' drivers/char/Kconfig || true
+          sed -i '/xilinx_hwicap/d' drivers/char/Kconfig || true
+          sed -i '/xillybus/d' drivers/char/Kconfig || true
 
       - name: Apply ReSukiSU Static Symbol Fixes (SELinux)
         run: |
