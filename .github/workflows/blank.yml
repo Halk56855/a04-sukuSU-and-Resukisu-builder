@@ -17,24 +17,21 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache flex g++-aarch64-linux-gnu gcc-aarch64-linux-gnu git libssl-dev make python3 wget zip clang lld
+          sudo apt-get install -y bc bison build-essential ccache flex git libssl-dev make python3 wget zip clang lld llvm g++-aarch64-linux-gnu gcc-aarch64-linux-gnu
 
       - name: Clone & Hook ReSukiSU Source
         run: |
           git clone https://github.com/rsuntk/resukisu-common.git drivers/resukisu || true
-          # ربط التعريفات بنظام بناء النواة في حال عدم وجودها
           if ! grep -q "resukisu" drivers/Makefile; then
             echo "obj-y += resukisu/" >> drivers/Makefile
           fi
 
       - name: Set Custom Kernel Version & Localversion
         run: |
-          # تعديل رقم الإصدار في Makefile الرئيسي
           sed -i 's/^VERSION =.*/VERSION = 4/' Makefile
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 19/' Makefile
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 325/' Makefile
           
-          # ضبط LOCALVERSION بشكل آمن
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-r1"
 
       - name: Setup Kernel Config
@@ -46,16 +43,35 @@ jobs:
       - name: Build Kernel Image
         run: |
           export ARCH=arm64
+          export SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          export CC=clang
-          export LD=ld.lld
-          make O=out -j$(nproc) Image.gz || make O=out -j$(nproc) Image
+          
+          make O=out \
+            CC=clang \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            -j$(nproc) Image.gz || make O=out \
+            CC=clang \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            -j$(nproc) Image
 
       - name: Pack Kernel with AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git AnyKernel3
           
-          # نسخ Image.gz إن وجد، وإلا يتم استخدام Image
           if [ -f out/arch/arm64/boot/Image.gz ]; then
             cp out/arch/arm64/boot/Image.gz AnyKernel3/
           else
