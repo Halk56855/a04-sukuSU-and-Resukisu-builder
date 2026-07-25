@@ -33,9 +33,13 @@ jobs:
         run: |
           sed -i 's/int is_ib_init_succeed()/int is_ib_init_succeed(void)/g' drivers/input/input_booster.c
 
-      - name: Exclude Mediatek Touchscreen Directory to Prevent Clang Errors
+      - name: Completely Remove Mediatek Drivers to Prevent Clang Errors
         run: |
+          rm -rf drivers/input/touchscreen/mediatek
           sed -i '/mediatek/d' drivers/input/touchscreen/Makefile || true
+          
+          rm -rf drivers/mmc/host/mediatek
+          sed -i '/mediatek/d' drivers/mmc/host/Makefile || true
 
       - name: Apply ReSukiSU Static Symbol Fixes (SELinux)
         run: |
