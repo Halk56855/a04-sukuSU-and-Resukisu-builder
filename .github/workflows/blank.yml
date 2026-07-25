@@ -117,7 +117,7 @@ jobs:
             STRIP=llvm-strip \
             LLVM=1 \
             LLVM_IAS=1 \
-            KCFLAGS="-Wno-error -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-array-bounds" \
+            KCFLAGS="-Wno-error -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-array-bounds -Wno-gnu-variable-sized-type-not-at-end" \
             KBUILD_CFLAGS="-Wno-error" \
             -j$(nproc) Image.gz || make O=out \
             CC=clang \
@@ -129,7 +129,7 @@ jobs:
             STRIP=llvm-strip \
             LLVM=1 \
             LLVM_IAS=1 \
-            KCFLAGS="-Wno-error -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-array-bounds" \
+            KCFLAGS="-Wno-error -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-array-bounds -Wno-gnu-variable-sized-type-not-at-end" \
             KBUILD_CFLAGS="-Wno-error" \
             -j$(nproc) Image
 
