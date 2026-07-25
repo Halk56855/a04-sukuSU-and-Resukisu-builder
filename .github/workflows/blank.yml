@@ -33,6 +33,10 @@ jobs:
         run: |
           sed -i 's/int is_ib_init_succeed()/int is_ib_init_succeed(void)/g' drivers/input/input_booster.c
 
+      - name: Fix Cgroup Defs Clang Warning
+        run: |
+          sed -i '1i #pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"' include/linux/cgroup-defs.h
+
       - name: Completely Remove Mediatek Drivers and References
         run: |
           rm -rf drivers/input/touchscreen/mediatek
