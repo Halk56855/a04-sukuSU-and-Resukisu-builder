@@ -67,6 +67,10 @@ jobs:
           
           sed -i '/agp/d' drivers/video/Kconfig || true
 
+      - name: Fix KGDB Constraint Error for Clang
+        run: |
+          sed -i 's/asm ("brk %0" : : "I" (KGDB_COMPILED_DBG_BRK_IMM));/asm ("brk #0x401");/g' arch/arm64/include/asm/kgdb.h || true
+
       - name: Apply ReSukiSU Static Symbol Fixes (SELinux)
         run: |
           find security/selinux/ -type f -name "*.c" | while read -r file; do
@@ -89,7 +93,6 @@ jobs:
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS_ALL y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_WERROR
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_KGDB
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-r1"
 
       - name: Setup Kernel Config
