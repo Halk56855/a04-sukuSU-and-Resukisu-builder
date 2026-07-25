@@ -1,4 +1,4 @@
-name: Build Samsung A04 Kernel with KernelSU-Next
+name: Build TragicHorizon v2 r4 Kernel
 
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git ccache automake flex bison build-essential libssl-dev libncurses5-dev libncursesw5-dev libelf-dev bc u-boot-tools zip unzip liblz4-tool python3
 
-      - name: Clone Samsung A04 Kernel Source
+      - name: Clone Samsung Kernel Source (linux-4.19.y Branch)
         run: |
           git clone --depth=1 -b linux-4.19.y https://github.com/Samsung-Galaxy-G85-JDM/kernel_samsung_a05m.git kernel-source
 
@@ -24,10 +24,34 @@ jobs:
         run: |
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 $GITHUB_WORKSPACE/clang-aosp
 
-      - name: Integrate KernelSU-Next (Legacy Branch for 4.19)
+      - name: Integrate KernelSU-Next (Legacy Branch)
         run: |
           cd $GITHUB_WORKSPACE/kernel-source
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+
+      - name: Configure Defconfig & Custom Kernel Name
+        run: |
+          cd $GITHUB_WORKSPACE/kernel-source
+          
+          # البحث التلقائي عن أول ملف defconfig متوفر للجهاز
+          CONFIG_FILE=$(find arch/arm64/configs/ -name "*a04*" -o -name "*a05*" | head -n 1)
+          if [ -z "$CONFIG_FILE" ]; then
+            CONFIG_FILE="arch/arm64/configs/a04m_defconfig"
+          fi
+          
+          echo "Using defconfig file: $CONFIG_FILE"
+          
+          # إضافة تسمية النواة المخصصة TragicHorizon v2 r4
+          echo 'CONFIG_LOCALVERSION="-TragicHorizon-v2-r4"' >> $CONFIG_FILE
+          
+          # تفعيل KernelSU-Next وتعطيل Kprobes لتفادي Bootloop
+          echo "CONFIG_KERNELSU=y" >> $CONFIG_FILE
+          echo "CONFIG_KERNELSU_NEXT=y" >> $CONFIG_FILE
+          echo "# CONFIG_KERNELSU_NEXT_KPROBES is not set" >> $CONFIG_FILE
+          echo "# CONFIG_KPROBES is not set" >> $CONFIG_FILE
+
+          # حفظ اسم الملف للاستخدام في خطوة البناء
+          echo "DEFCONFIG_NAME=$(basename $CONFIG_FILE)" >> $GITHUB_ENV
 
       - name: Build Kernel Image
         run: |
@@ -39,8 +63,8 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
           export CC=clang
 
-          # ملف إعدادات A04 (a04_defconfig / a04m_defconfig)
-          make O=out a04m_defconfig || make O=out a04_defconfig || make O=out a04m_eur_open_defconfig
+          # استخدام ملف الdefconfig المكتشف تلقائياً
+          make O=out ${{ env.DEFCONFIG_NAME }}
           make -j$(nproc) O=out
 
       - name: Pack with AnyKernel3
@@ -48,7 +72,7 @@ jobs:
           git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
           cd AnyKernel3
           
-          # نسخ ملف النواة الخاص بـ A04
+          # نسخ ملف النواة الناتج
           if [ -f ../kernel-source/out/arch/arm64/boot/Image.gz-dtb ]; then
             cp ../kernel-source/out/arch/arm64/boot/Image.gz-dtb .
           elif [ -f ../kernel-source/out/arch/arm64/boot/Image.gz ]; then
@@ -57,10 +81,10 @@ jobs:
             cp ../kernel-source/out/arch/arm64/boot/Image .
           fi
 
-          zip -r9 ../KernelSU-Next-A04.zip * -x .git README.md
+          zip -r9 ../TragicHorizon-v2-r4-Kernel.zip * -x .git README.md
 
       - name: Upload Kernel ZIP Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: KernelSU-Next-Samsung-A04
-          path: KernelSU-Next-A04.zip
+          name: TragicHorizon-v2-r4-Kernel
+          path: TragicHorizon-v2-r4-Kernel.zip
