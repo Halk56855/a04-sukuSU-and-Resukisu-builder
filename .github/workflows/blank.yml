@@ -23,14 +23,33 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
 
+      - name: Fix Clang Strict Prototypes Error
+        run: |
+          sed -i 's/int is_ib_init_succeed()/int is_ib_init_succeed(void)/g' drivers/input/input_booster.c
+
+      - name: Apply ReSukiSU Static Symbol Fixes (SELinux)
+        run: |
+          # إزالة static من الرموز الثابتة المطلوبة لـ ReSukiSU في ملفات SELinux لمنع فشل التجميع
+          find security/selinux/ -type f -name "*.c" | while read -file; do
+            sed -i 's/static const struct file_operations sel_handle_status_ops/const struct file_operations sel_handle_status_ops/g' "$file" || true
+            sed -i 's/static DEFINE_MUTEX(sel_mutex);/DEFINE_MUTEX(sel_mutex);/g' "$file" || true
+            sed -i 's/static DEFINE_RWLOCK(policy_rwlock);/DEFINE_RWLOCK(policy_rwlock);/g' "$file" || true
+            sed -i 's/static struct page \*selinux_status_page;/struct page \*selinux_status_page;/g' "$file" || true
+            sed -i 's/static DEFINE_MUTEX(selinux_status_lock);/DEFINE_MUTEX(selinux_status_lock);/g' "$file" || true
+            sed -i 's/static struct security_operations selinux_ops/struct security_operations selinux_ops/g' "$file" || true
+          done
+
       - name: Set Custom Kernel Version & Localversion
         run: |
           sed -i 's/^VERSION =.*/VERSION = 4/' Makefile
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 19/' Makefile
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 325/' Makefile
           
+          # تفعيل خيارات KSU والخطافات اليدوية وتكوينات الرموز
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU_MANUAL_HOOK y
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS y
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS_ALL y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-r1"
 
       - name: Setup Kernel Config
