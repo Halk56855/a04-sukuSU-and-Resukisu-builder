@@ -22,10 +22,17 @@ jobs:
       - name: Clean and Sanitize Kconfig Files
         run: |
           # 1. Remove CRLF (\r) line endings from Windows environments
-          find . -type f -name "Kconfig*" -exec sed -i 's/\r$//' {} +
-          
+          find . -type f -name "Kconfig*" ! -path "./drivers/crypto/*" -exec sed -i 's/\r$//' {} +
+
           # 2. Strip stray '+' symbols ONLY at the start of lines (bad git patch copy-pastes)
-          find . -type f -name "Kconfig*" -exec sed -i -E 's/^[ \t]*\+//' {} +
+          find . -type f -name "Kconfig*" ! -path "./drivers/crypto/*" -exec sed -i -E 's/^[ \t]*\+//' {} +
+
+      - name: Debug Kconfig Content
+        run: |
+          echo "===== drivers/crypto/Kconfig (lines 1-90) ====="
+          sed -n '1,90p' drivers/crypto/Kconfig || echo "file not found"
+          echo "===== crypto/Kconfig (relevant lines) ====="
+          sed -n '1p;15p;1960,1975p' crypto/Kconfig || echo "file not found"
 
       - name: Setup ReSukiSU (Official Setup Script)
         run: |
@@ -72,7 +79,7 @@ jobs:
           sed -i 's/^VERSION =.*/VERSION = 4/' Makefile
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 19/' Makefile
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 325/' Makefile
-          
+
           # KernelSU / ReSukiSU Configurations
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU_MANUAL_HOOK y
@@ -80,7 +87,7 @@ jobs:
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS_ALL y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_WERROR
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_GKI_HIDDEN_DRM_CONFIGS || true
-          
+
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-r1"
 
       - name: Setup Kernel Config
@@ -95,7 +102,7 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          
+
           make O=out \
             CC=clang \
             LD=ld.lld \
@@ -125,13 +132,13 @@ jobs:
       - name: Pack Kernel with AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git AnyKernel3
-          
+
           if [ -f out/arch/arm64/boot/Image.gz ]; then
             cp out/arch/arm64/boot/Image.gz AnyKernel3/
           else
             cp out/arch/arm64/boot/Image AnyKernel3/
           fi
-          
+
           cd AnyKernel3
           sed -i 's/BLOCK=.*/BLOCK=auto;/' anykernel.sh
           sed -i 's/IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=0;/' anykernel.sh
