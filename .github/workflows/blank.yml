@@ -9,7 +9,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Dependencies
         run: |
@@ -28,10 +28,7 @@ jobs:
 
       - name: Integrate SukiSU-Ultra
         run: |
-          # سحب سورس SukiSU-Ultra وإدراجه داخل الكيرنل
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU/main/kernel/setup.sh" | bash -
-          
-          # تفعيل إعدادات SukiSU داخل ملف التكوين
           echo "CONFIG_KSU=y" >> arch/arm64/configs/a04_defconfig
           echo "CONFIG_KSU_TAMPER_SYS_CALL=y" >> arch/arm64/configs/a04_defconfig
 
@@ -45,7 +42,7 @@ jobs:
           make -j$(nproc)
 
       - name: Upload Kernel Output
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: A04-SukiSU-Kernel-Image
           path: arch/arm64/boot/Image*
