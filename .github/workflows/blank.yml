@@ -24,9 +24,8 @@ jobs:
           # 1. Remove CRLF (\r) line endings from Windows environments
           find . -type f -name "Kconfig*" -exec sed -i 's/\r$//' {} +
           
-          # 2. Strip stray '+' symbols from bad git patches (including those with leading spaces/tabs)
-          find . -type f -name "Kconfig*" -exec sed -i 's/^[ \t]*+//g' {} +
-          find . -type f -name "Kconfig*" -exec sed -i 's/\+//g' {} +
+          # 2. Strip stray '+' symbols ONLY at the start of lines (bad git patch copy-pastes)
+          find . -type f -name "Kconfig*" -exec sed -i -E 's/^[ \t]*\+//' {} +
 
       - name: Setup ReSukiSU (Official Setup Script)
         run: |
