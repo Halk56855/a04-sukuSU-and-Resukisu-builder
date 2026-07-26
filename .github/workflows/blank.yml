@@ -1,151 +1,51 @@
-name: Build Samsung A04 Kernel with TragicHorizon & AnyKernel3
+name: Build Samsung A04 Kernel with SukiSU-Ultra
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout Kernel Source
-        uses: actions/checkout@v4
-        with:
-          repository: Samsung-Galaxy-G85-JDM/kernel_samsung_a05m
-          ref: linux-4.19.y
-          submodules: recursive
+    runs-on: ubuntu-latest
 
-      - name: Setup Build Environment
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache flex git libssl-dev make python3 wget zip clang lld llvm g++-aarch64-linux-gnu gcc-aarch64-linux-gnu curl dos2unix
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev git clang gcc-aarch64-linux-gnu curl
 
-      - name: Clean and Sanitize Kconfig Files
+      - name: Download and Extract Kernel Source
         run: |
-          # 1. Remove CRLF (\r) line endings from Windows environments
-          find . -type f -name "Kconfig*" ! -path "./drivers/crypto/*" -exec sed -i 's/\r$//' {} +
+          curl -L -o Kernel.tar.gz "https://github.com/Halk56855/android_kernel_samsung_a04f/releases/download/V1.0/Kernel.tar.gz"
+          tar -xvf Kernel.tar.gz
 
-          # 2. Strip stray '+' symbols ONLY at the start of lines (bad git patch copy-pastes)
-          find . -type f -name "Kconfig*" ! -path "./drivers/crypto/*" -exec sed -i -E 's/^[ \t]*\+//' {} +
-
-      - name: Debug Kconfig Content
+      - name: Setup Toolchain
         run: |
-          echo "===== drivers/crypto/Kconfig (lines 1-90) ====="
-          sed -n '1,90p' drivers/crypto/Kconfig || echo "file not found"
-          echo "===== crypto/Kconfig (relevant lines) ====="
-          sed -n '1p;15p;1960,1975p' crypto/Kconfig || echo "file not found"
+          git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 gcc64
+          echo "$GITHUB_WORKSPACE/gcc64/bin" >> $GITHUB_PATH
 
-      - name: Setup ReSukiSU (Official Setup Script)
+      - name: Integrate SukiSU-Ultra
         run: |
-          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
+          # سحب سورس SukiSU-Ultra وإدراجه داخل الكيرنل
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU/main/kernel/setup.sh" | bash -
+          
+          # تفعيل إعدادات SukiSU داخل ملف التكوين
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/a04_defconfig
+          echo "CONFIG_KSU_TAMPER_SYS_CALL=y" >> arch/arm64/configs/a04_defconfig
 
-      - name: Bypass ReSukiSU Manual Hook Strict Check
-        run: |
-          if [ -f KernelSU/kernel/tools/manual_hook_check.mk ]; then
-            echo "" > KernelSU/kernel/tools/manual_hook_check.mk
-          fi
-
-      - name: Fix Clang Strict Prototypes Error
-        run: |
-          sed -i 's/int is_ib_init_succeed()/int is_ib_init_succeed(void)/g' drivers/input/input_booster.c
-
-      - name: Fix Cgroup Defs Clang Warning
-        run: |
-          sed -i '1i #pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"' include/linux/cgroup-defs.h
-
-      - name: Fix KGDB Constraint Error for Clang
-        run: |
-          sed -i 's/asm ("brk %0" : : "I" (KGDB_COMPILED_DBG_BRK_IMM));/asm ("brk #0x401");/g' arch/arm64/include/asm/kgdb.h || true
-
-      - name: Apply ReSukiSU Static Symbol Fixes (SELinux)
-        run: |
-          find security/selinux/ -type f -name "*.c" | while read -r file; do
-            sed -i 's/static const struct file_operations sel_handle_status_ops/const struct file_operations sel_handle_status_ops/g' "$file" || true
-            sed -i 's/static DEFINE_MUTEX(sel_mutex);/DEFINE_MUTEX(sel_mutex);/g' "$file" || true
-            sed -i 's/static DEFINE_RWLOCK(policy_rwlock);/DEFINE_RWLOCK(policy_rwlock);/g' "$file" || true
-            sed -i 's/static struct page \*selinux_status_page;/struct page \*selinux_status_page;/g' "$file" || true
-            sed -i 's/static DEFINE_MUTEX(selinux_status_lock);/DEFINE_MUTEX(selinux_status_lock);/g' "$file" || true
-            sed -i 's/static struct security_operations selinux_ops/struct security_operations selinux_ops/g' "$file" || true
-          done
-
-      - name: Neutralize DRM Dependencies in DRM Kconfig Directly
-        run: |
-          if [ -f drivers/gpu/drm/Kconfig ]; then
-            sed -i 's/select DRM_MIPI_DSI/# select DRM_MIPI_DSI/g' drivers/gpu/drm/Kconfig || true
-            sed -i 's/select DRM_GEM_CMA_HELPER/# select DRM_GEM_CMA_HELPER/g' drivers/gpu/drm/Kconfig || true
-          fi
-
-      - name: Set Custom Kernel Version & Defconfig Configuration
-        run: |
-          sed -i 's/^VERSION =.*/VERSION = 4/' Makefile
-          sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 19/' Makefile
-          sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 325/' Makefile
-
-          # KernelSU / ReSukiSU Configurations
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU y
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU_MANUAL_HOOK y
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS y
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS_ALL y
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_WERROR
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_GKI_HIDDEN_DRM_CONFIGS || true
-
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-r1"
-
-      - name: Setup Kernel Config
-        run: |
-          export ARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          make O=out rsuntk-a04_defconfig
-          make O=out olddefconfig
-
-      - name: Build Kernel Image
+      - name: Build Kernel
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE=aarch64-linux-android-
 
-          make O=out \
-            CC=clang \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            KCFLAGS="-Wno-error -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-array-bounds -Wno-gnu-variable-sized-type-not-at-end" \
-            KBUILD_CFLAGS="-Wno-error" \
-            -j$(nproc) Image.gz || make O=out \
-            CC=clang \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            KCFLAGS="-Wno-error -Wno-int-conversion -Wno-incompatible-pointer-types -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-array-bounds -Wno-gnu-variable-sized-type-not-at-end" \
-            KBUILD_CFLAGS="-Wno-error" \
-            -j$(nproc) Image
+          make a04_defconfig
+          make -j$(nproc)
 
-      - name: Pack Kernel with AnyKernel3
-        run: |
-          git clone https://github.com/osm0sis/AnyKernel3.git AnyKernel3
-
-          if [ -f out/arch/arm64/boot/Image.gz ]; then
-            cp out/arch/arm64/boot/Image.gz AnyKernel3/
-          else
-            cp out/arch/arm64/boot/Image AnyKernel3/
-          fi
-
-          cd AnyKernel3
-          sed -i 's/BLOCK=.*/BLOCK=auto;/' anykernel.sh
-          sed -i 's/IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=0;/' anykernel.sh
-          zip -r9 ../AnyKernel3-TragicHorizon-A04.zip * -x .git* README.md *placeholder
-
-      - name: Upload AnyKernel3 Package
-        uses: actions/upload-artifact@v4
+      - name: Upload Kernel Output
+        uses: actions/upload-artifact@v3
         with:
-          name: AnyKernel3-TragicHorizon-v3-r1-A04
-          path: AnyKernel3-TragicHorizon-A04.zip
+          name: A04-SukiSU-Kernel-Image
+          path: arch/arm64/boot/Image*
