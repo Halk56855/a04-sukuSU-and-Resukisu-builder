@@ -19,12 +19,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential ccache flex git libssl-dev make python3 wget zip clang lld llvm g++-aarch64-linux-gnu gcc-aarch64-linux-gnu curl dos2unix
 
-      - name: Fix CRLF and Stray Plus (+) Characters in Kconfig Files
+      - name: Fix CRLF, Stray Plus (+), and Corrupt Choice Blocks in Kconfig Files
         run: |
           # Remove CRLF line endings
           find . -type f -name "Kconfig*" -exec sed -i 's/\r$//' {} +
           # Remove stray leading '+' signs from bad git patches/diffs in Kconfig files
           find . -type f -name "Kconfig*" -exec sed -i 's/^+//' {} +
+          # Fix corrupt Touchscreen Kconfig choice blocks breaking syncconfig
+          find drivers/input/touchscreen/ -type f -name "Kconfig*" -exec sed -i 's/^choice/# choice/g' {} +
+          find drivers/input/touchscreen/ -type f -name "Kconfig*" -exec sed -i 's/^endchoice/# endchoice/g' {} +
 
       - name: Setup ReSukiSU (Official Setup Script)
         run: |
