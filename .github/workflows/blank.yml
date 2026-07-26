@@ -37,57 +37,6 @@ jobs:
         run: |
           sed -i '1i #pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"' include/linux/cgroup-defs.h
 
-      - name: Remove Problematic Touchscreen and Input Drivers
-        run: |
-          rm -rf drivers/input/touchscreen/gt9895
-          rm -rf drivers/input/aw9610x_sar
-          rm -rf drivers/input/hx9031a_sar
-          
-          sed -i '/gt9895/d' drivers/input/touchscreen/Makefile || true
-          sed -i '/gt9895/d' drivers/input/touchscreen/Kconfig || true
-          sed -i '/aw9610x_sar/d' drivers/input/Makefile || true
-          sed -i '/aw9610x_sar/d' drivers/input/Kconfig || true
-          sed -i '/hx9031a_sar/d' drivers/input/Makefile || true
-          sed -i '/hx9031a_sar/d' drivers/input/Kconfig || true
-
-      - name: Completely Remove All Mediatek Drivers and References
-        run: |
-          rm -rf drivers/input/touchscreen/mediatek
-          sed -i '/mediatek/d' drivers/input/touchscreen/Makefile || true
-          sed -i '/mediatek/d' drivers/input/touchscreen/Kconfig || true
-          
-          rm -rf drivers/mmc/host/mediatek
-          sed -i '/mediatek/d' drivers/mmc/host/Makefile || true
-          sed -i '/mediatek/d' drivers/mmc/host/Kconfig || true
-
-          rm -rf drivers/misc/mediatek
-          sed -i '/mediatek/d' drivers/misc/Makefile || true
-          sed -i '/mediatek/d' drivers/misc/Kconfig || true
-
-      - name: Remove Unused Char Drivers Causing Clang Errors
-        run: |
-          rm -rf drivers/char/agp drivers/char/hw_random drivers/char/ipmi drivers/char/mwave drivers/char/pcmcia drivers/char/tpm drivers/char/xilinx_hwicap drivers/char/xillybus
-          
-          sed -i '/agp/d' drivers/char/Makefile || true
-          sed -i '/hw_random/d' drivers/char/Makefile || true
-          sed -i '/ipmi/d' drivers/char/Makefile || true
-          sed -i '/mwave/d' drivers/char/Makefile || true
-          sed -i '/pcmcia/d' drivers/char/Makefile || true
-          sed -i '/tpm/d' drivers/char/Makefile || true
-          sed -i '/xilinx_hwicap/d' drivers/char/Makefile || true
-          sed -i '/xillybus/d' drivers/char/Makefile || true
-          
-          sed -i '/agp/d' drivers/char/Kconfig || true
-          sed -i '/hw_random/d' drivers/char/Kconfig || true
-          sed -i '/ipmi/d' drivers/char/Kconfig || true
-          sed -i '/mwave/d' drivers/char/Kconfig || true
-          sed -i '/pcmcia/d' drivers/char/Kconfig || true
-          sed -i '/tpm/d' drivers/char/Kconfig || true
-          sed -i '/xilinx_hwicap/d' drivers/char/Kconfig || true
-          sed -i '/xillybus/d' drivers/char/Kconfig || true
-          
-          sed -i '/agp/d' drivers/video/Kconfig || true
-
       - name: Fix KGDB Constraint Error for Clang
         run: |
           sed -i 's/asm ("brk %0" : : "I" (KGDB_COMPILED_DBG_BRK_IMM));/asm ("brk #0x401");/g' arch/arm64/include/asm/kgdb.h || true
@@ -103,20 +52,26 @@ jobs:
             sed -i 's/static struct security_operations selinux_ops/struct security_operations selinux_ops/g' "$file" || true
           done
 
-      - name: Set Custom Kernel Version & Defconfig Fixes
+      - name: Neutralize DRM Dependencies in DRM Kconfig Directly
+        run: |
+          if [ -f drivers/gpu/drm/Kconfig ]; then
+            sed -i 's/select DRM_MIPI_DSI/# select DRM_MIPI_DSI/g' drivers/gpu/drm/Kconfig || true
+            sed -i 's/select DRM_GEM_CMA_HELPER/# select DRM_GEM_CMA_HELPER/g' drivers/gpu/drm/Kconfig || true
+          fi
+
+      - name: Set Custom Kernel Version & Defconfig Configuration
         run: |
           sed -i 's/^VERSION =.*/VERSION = 4/' Makefile
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 19/' Makefile
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 325/' Makefile
           
-          # KSU Configurations
+          # KernelSU / ReSukiSU Configurations
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU_MANUAL_HOOK y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS_ALL y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_WERROR
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_GKI_HIDDEN_DRM_CONFIGS
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --enable CONFIG_DRM
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_GKI_HIDDEN_DRM_CONFIGS || true
           
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-r1"
 
@@ -125,14 +80,6 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           make O=out rsuntk-a04_defconfig
-          
-          # Apply overrides on generated out/.config
-          ./scripts/config --file out/.config --disable CONFIG_GKI_HIDDEN_DRM_CONFIGS
-          ./scripts/config --file out/.config --enable CONFIG_DRM
-          ./scripts/config --file out/.config --enable CONFIG_DRM_MIPI_DSI
-          ./scripts/config --file out/.config --enable CONFIG_DRM_KMS_HELPER
-          ./scripts/config --file out/.config --enable CONFIG_DRM_GEM_CMA_HELPER
-          
           make O=out olddefconfig
 
       - name: Build Kernel Image
