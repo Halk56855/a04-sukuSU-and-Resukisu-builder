@@ -103,25 +103,52 @@ jobs:
             sed -i 's/static struct security_operations selinux_ops/struct security_operations selinux_ops/g' "$file" || true
           done
 
-      - name: Set Custom Kernel Version & Defconfig Fixes
+      - name: Safely Neutralize GKI Hidden DRM Configs
+        run: |
+          python3 -c '
+          import os
+          for root, dirs, files in os.walk("."):
+              for f in files:
+                  if "Kconfig" in f:
+                      path = os.path.join(root, f)
+                      try:
+                          with open(path, "r", encoding="utf-8", errors="ignore") as file:
+                              lines = file.readlines()
+                          new_lines = []
+                          in_gki = False
+                          modified = False
+                          for line in lines:
+                              if "config GKI_HIDDEN_DRM_CONFIGS" in line:
+                                  in_gki = True
+                              elif in_gki and line.strip().startswith("config "):
+                                  in_gki = False
+                              
+                              if in_gki and ("select DRM_MIPI_DSI" in line or "select DRM_GEM_CMA_HELPER" in line):
+                                  line = "# " + line
+                                  modified = True
+                              new_lines.append(line)
+                          if modified:
+                              with open(path, "w", encoding="utf-8") as file:
+                                  file.writelines(new_lines)
+                              print(f"Patched: {path}")
+                      except Exception as e:
+                          pass
+          '
+
+      - name: Set Custom Kernel Version & Localversion
         run: |
           sed -i 's/^VERSION =.*/VERSION = 4/' Makefile
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 19/' Makefile
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 325/' Makefile
           
-          # KSU Configurations
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU_MANUAL_HOOK y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS_ALL y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_WERROR
-          
-          # Fix DRM dependencies directly in defconfig before build
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --enable CONFIG_DRM
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --enable CONFIG_DRM_MIPI_DSI
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --enable CONFIG_DRM_KMS_HELPER
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --enable CONFIG_DRM_GEM_CMA_HELPER
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_GKI_HIDDEN_DRM_CONFIGS
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_GKI_HIDDEN_DRM_CONFIGS || true
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_DRM_MIPI_DSI || true
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_DRM_GEM_CMA_HELPER || true
           
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-r1"
 
