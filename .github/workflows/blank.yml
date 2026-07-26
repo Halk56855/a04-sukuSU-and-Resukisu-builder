@@ -115,12 +115,8 @@ jobs:
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS_ALL y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_WERROR
-          
-          # Enable DRM to cleanly satisfy DRM_MIPI_DSI and DRM_GEM_CMA_HELPER dependencies
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_GKI_HIDDEN_DRM_CONFIGS
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --enable CONFIG_DRM
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --enable CONFIG_DRM_MIPI_DSI
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --enable CONFIG_DRM_KMS_HELPER
-          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --enable CONFIG_DRM_GEM_CMA_HELPER
           
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-r1"
 
@@ -129,6 +125,14 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           make O=out rsuntk-a04_defconfig
+          
+          # Apply overrides on generated out/.config
+          ./scripts/config --file out/.config --disable CONFIG_GKI_HIDDEN_DRM_CONFIGS
+          ./scripts/config --file out/.config --enable CONFIG_DRM
+          ./scripts/config --file out/.config --enable CONFIG_DRM_MIPI_DSI
+          ./scripts/config --file out/.config --enable CONFIG_DRM_KMS_HELPER
+          ./scripts/config --file out/.config --enable CONFIG_DRM_GEM_CMA_HELPER
+          
           make O=out olddefconfig
 
       - name: Build Kernel Image
