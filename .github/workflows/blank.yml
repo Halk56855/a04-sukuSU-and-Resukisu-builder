@@ -103,14 +103,6 @@ jobs:
             sed -i 's/static struct security_operations selinux_ops/struct security_operations selinux_ops/g' "$file" || true
           done
 
-      - name: Completely Remove GKI Hidden DRM Configs from Kconfig
-        run: |
-          find . -type f -name "Kconfig*" | while read -r file; do
-            sed -i '/GKI_HIDDEN_DRM_CONFIGS/,+4d' "$file" || true
-            sed -i '/GKI_HIDDEN_DRM_CONFIGS/d' "$file" || true
-          done
-          find arch/arm64/configs/ -type f -exec sed -i '/GKI_HIDDEN_DRM_CONFIGS/d' {} + || true
-
       - name: Set Custom Kernel Version & Localversion
         run: |
           sed -i 's/^VERSION =.*/VERSION = 4/' Makefile
