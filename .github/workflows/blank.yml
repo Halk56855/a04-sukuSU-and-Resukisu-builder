@@ -103,22 +103,26 @@ jobs:
             sed -i 's/static struct security_operations selinux_ops/struct security_operations selinux_ops/g' "$file" || true
           done
 
-      - name: Patch Kconfig DRM Directives
-        run: |
-          find . -type f \( -name "Kconfig*" -o -name "Kconfig" \) -exec sed -i -E 's/^\s*select\s+DRM_MIPI_DSI\b//g' {} + || true
-          find . -type f \( -name "Kconfig*" -o -name "Kconfig" \) -exec sed -i -E 's/^\s*select\s+DRM_GEM_CMA_HELPER\b//g' {} + || true
-
-      - name: Set Custom Kernel Version & Localversion
+      - name: Set Custom Kernel Version & Defconfig Fixes
         run: |
           sed -i 's/^VERSION =.*/VERSION = 4/' Makefile
           sed -i 's/^PATCHLEVEL =.*/PATCHLEVEL = 19/' Makefile
           sed -i 's/^SUBLEVEL =.*/SUBLEVEL = 325/' Makefile
           
+          # KSU Configurations
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KSU_MANUAL_HOOK y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-val CONFIG_KALLSYMS_ALL y
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_WERROR
+          
+          # Fix DRM dependencies directly in defconfig before build
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --enable CONFIG_DRM
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --enable CONFIG_DRM_MIPI_DSI
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --enable CONFIG_DRM_KMS_HELPER
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --enable CONFIG_DRM_GEM_CMA_HELPER
+          ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --disable CONFIG_GKI_HIDDEN_DRM_CONFIGS
+          
           ./scripts/config --file arch/arm64/configs/rsuntk-a04_defconfig --set-str CONFIG_LOCALVERSION "-TragicHorizon-v3-r1"
 
       - name: Setup Kernel Config
@@ -126,14 +130,7 @@ jobs:
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           make O=out rsuntk-a04_defconfig
-          
-          # Explicitly enable DRM in generated out/.config to fulfill dependencies
-          ./scripts/config --file out/.config --enable CONFIG_DRM
-          ./scripts/config --file out/.config --enable CONFIG_DRM_MIPI_DSI
-          ./scripts/config --file out/.config --enable CONFIG_DRM_GEM_CMA_HELPER
-          ./scripts/config --file out/.config --disable CONFIG_GKI_HIDDEN_DRM_CONFIGS
-          
-          make O=out olddefconfig
+          yes '' | make O=out olddefconfig || true
 
       - name: Build Kernel Image
         run: |
