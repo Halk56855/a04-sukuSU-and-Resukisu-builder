@@ -17,7 +17,11 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache flex git libssl-dev make python3 wget zip clang lld llvm g++-aarch64-linux-gnu gcc-aarch64-linux-gnu curl
+          sudo apt-get install -y bc bison build-essential ccache flex git libssl-dev make python3 wget zip clang lld llvm g++-aarch64-linux-gnu gcc-aarch64-linux-gnu curl dos2unix
+
+      - name: Fix CRLF Line Endings in Kconfig Files
+        run: |
+          find . -type f -name "Kconfig*" -exec sed -i 's/\r$//' {} +
 
       - name: Setup ReSukiSU (Official Setup Script)
         run: |
