@@ -19,9 +19,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential ccache flex git libssl-dev make python3 wget zip clang lld llvm g++-aarch64-linux-gnu gcc-aarch64-linux-gnu curl dos2unix
 
-      - name: Fix CRLF Line Endings in Kconfig Files
+      - name: Fix CRLF and Stray Plus (+) Characters in Kconfig Files
         run: |
+          # Remove CRLF line endings
           find . -type f -name "Kconfig*" -exec sed -i 's/\r$//' {} +
+          # Remove stray leading '+' signs from bad git patches/diffs in Kconfig files
+          find . -type f -name "Kconfig*" -exec sed -i 's/^+//' {} +
 
       - name: Setup ReSukiSU (Official Setup Script)
         run: |
