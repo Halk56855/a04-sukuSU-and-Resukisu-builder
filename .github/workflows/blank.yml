@@ -55,6 +55,10 @@ jobs:
           echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/a04_defconfig
           echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/a04_defconfig
 
+          # تعطيل SUSFS لتجنب البحث عن susfs.h غير الموجود
+          echo "CONFIG_KSU_SUSFS=n" >> arch/arm64/configs/a04_defconfig
+          echo "CONFIG_KSU_SUSFS_HAS_SU=n" >> arch/arm64/configs/a04_defconfig
+
           # تعطيل IKHEADERS لتجنب خطأ kheaders_data
           echo "CONFIG_IKHEADERS=n" >> arch/arm64/configs/a04_defconfig
 
