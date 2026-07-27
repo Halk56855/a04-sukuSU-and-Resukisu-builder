@@ -64,7 +64,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-          # تعريف جميع مسارات SPM و MediaTek المفقودة
+          # تعريف جميع مسارات CCU و SPM و MediaTek المفقودة
           EXTRA_FLAGS="-w -I$(pwd)/kernel/trace -Ikernel/trace \
           -I$(pwd)/drivers/misc/mediatek/base/power/ppm_v3/inc \
           -I$(pwd)/drivers/misc/mediatek/base/power/ppm_v3/inc/mach/mt6765 \
@@ -78,6 +78,10 @@ jobs:
           -I$(pwd)/drivers/misc/mediatek/base/power/include \
           -I$(pwd)/drivers/misc/mediatek/base/power/include/spm \
           -I$(pwd)/drivers/misc/mediatek/base/power/include/spm/mt6765 \
+          -I$(pwd)/drivers/misc/mediatek/ccu/src/mt6765 \
+          -I$(pwd)/drivers/misc/mediatek/ccu/src/1.2 \
+          -I$(pwd)/drivers/misc/mediatek/ccu/src \
+          -I$(pwd)/drivers/misc/mediatek/ccu/inc \
           -I$(pwd)/drivers/misc/mediatek/include \
           -I$(pwd)/drivers/misc/mediatek/include/mt-plat \
           -I$(pwd)/drivers/misc/mediatek/include/mt-plat/mt6765"
