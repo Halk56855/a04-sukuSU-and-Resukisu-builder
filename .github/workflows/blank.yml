@@ -53,12 +53,12 @@ jobs:
             sed -i 's/access_ok(/access_ok(0, /g' drivers/kernelsu/kpm/*.c
           fi
 
-          # 2. إصلاح خطأ fallthrough المتوافق مع الأنوية الحديثة فقط
-          find drivers/kernelsu/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/\bfallthrough;//* fallthrough */;/g' {} +
+          # 2. إصلاح خطأ fallthrough باستخدام @ كمحدد لمنع خطأ sed
+          find drivers/kernelsu/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@\bfallthrough;@/* fallthrough */;@g' {} +
 
           # 3. إصلاح خطأ تمرير المؤشر في sulog/event.c
           if [ -f drivers/kernelsu/sulog/event.c ]; then
-            sed -i 's/user_arg_null_ptr()/\*user_arg_null_ptr()/g' drivers/kernelsu/sulog/event.c
+            sed -i 's/#define USER_ARG_NULL user_arg_null_ptr()/#define USER_ARG_NULL (*user_arg_null_ptr())/g' drivers/kernelsu/sulog/event.c
           fi
 
           # إعدادات SukiSU و Non-GKI
