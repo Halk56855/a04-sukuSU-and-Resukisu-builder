@@ -68,6 +68,7 @@ jobs:
           find drivers/misc/mediatek/emi/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <mt_emi_api.h>@#include "mt_emi_api.h"@g' {} + 2>/dev/null || true
           find drivers/misc/mediatek/leds/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <mtk_leds_sw.h>@#include "mtk_leds_sw.h"@g' {} + 2>/dev/null || true
           find drivers/misc/mediatek/m4u/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <m4u_port.h>@#include "m4u_port.h"@g' {} + 2>/dev/null || true
+          find drivers/misc/mediatek/power_throttling/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <mtk_battery_percentage_throttling.h>@#include "mtk_battery_percentage_throttling.h"@g' {} + 2>/dev/null || true
 
           # 5. إصلاح مسار TRACE_INCLUDE_PATH الديناميكي لملفات التتبع في MediaTek
           find drivers/misc/mediatek/ -type f -name "*.h" -exec grep -l "#define TRACE_INCLUDE_PATH \." {} + | while read -r file; do
@@ -126,6 +127,7 @@ jobs:
           -I$(pwd)/drivers/misc/mediatek/m4u/2.0 \
           -I$(pwd)/drivers/misc/mediatek/m4u/mt6765 \
           -I$(pwd)/drivers/misc/mediatek/mmdvfs \
+          -I$(pwd)/drivers/misc/mediatek/power_throttling \
           -I$(pwd)/drivers/misc/mediatek/ext_disp \
           -I$(pwd)/drivers/misc/mediatek/ext_disp/include \
           -I$(pwd)/drivers/misc/mediatek/ext_disp/mt6765 \
