@@ -98,7 +98,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-          # المسارات الأساسية لـ MediaTek ومحركات المشغلات ومسارات EMI
+          # المسارات الأساسية لـ MediaTek ومحركات المشغلات و ext_disp
           EXTRA_FLAGS="-w -I$(pwd)/kernel/trace -Ikernel/trace \
           -I$(pwd)/drivers/misc/mediatek/include \
           -I$(pwd)/drivers/misc/mediatek/include/mt-plat \
@@ -112,6 +112,10 @@ jobs:
           -I$(pwd)/drivers/misc/mediatek/dramc/mt6765 \
           -I$(pwd)/drivers/misc/mediatek/emi \
           -I$(pwd)/drivers/misc/mediatek/emi/mt6765 \
+          -I$(pwd)/drivers/misc/mediatek/ext_disp \
+          -I$(pwd)/drivers/misc/mediatek/ext_disp/include \
+          -I$(pwd)/drivers/misc/mediatek/ext_disp/mt6765 \
+          -I$(pwd)/drivers/misc/mediatek/ext_disp/mt6765/include \
           -I$(pwd)/drivers/misc/mediatek/eccci \
           -I$(pwd)/drivers/misc/mediatek/eccci/inc \
           -I$(pwd)/drivers/misc/mediatek/eccci/hif \
