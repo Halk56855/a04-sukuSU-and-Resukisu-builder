@@ -41,21 +41,26 @@ jobs:
 
           echo "$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902/bin" >> $GITHUB_PATH
 
-      - name: Integrate SukiSU-Ultra
+      - name: Integrate SukiSU-Ultra & Patch Clkbuf
         run: |
           # دمج SukiSU-Ultra بصيغة builtin
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
 
-          # إعدادات SukiSU و Non-GKI وتعطيل clkbuf المتسبب بالخطأ
+          # إعدادات SukiSU و Non-GKI
           echo "CONFIG_KSU=y" >> arch/arm64/configs/a04_defconfig
           echo "CONFIG_KSU_TAMPER_SYS_CALL=y" >> arch/arm64/configs/a04_defconfig
           echo "CONFIG_KPM=y" >> arch/arm64/configs/a04_defconfig
           echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/a04_defconfig
           echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/a04_defconfig
-          echo "CONFIG_MTK_CLKBUF=n" >> arch/arm64/configs/a04_defconfig
 
           # تعطيل IKHEADERS لتجنب خطأ kheaders_data
           echo "CONFIG_IKHEADERS=n" >> arch/arm64/configs/a04_defconfig
+
+          # تعطيل بناء ملفات clkbuf المعطوبة لمنع توقف البناء
+          if [ -d drivers/misc/mediatek/clkbuf ]; then
+            echo "obj-" > drivers/misc/mediatek/clkbuf/Makefile
+            rm -f drivers/misc/mediatek/clkbuf/src/*.c
+          fi
 
       - name: Build Kernel
         run: |
@@ -65,7 +70,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-          # المسارات الأساسية المتبقية لـ MediaTek ومحرك الطاقة SPM
+          # المسارات الأساسية لـ MediaTek ومحرك الطاقة SPM
           EXTRA_FLAGS="-w -I$(pwd)/kernel/trace -Ikernel/trace \
           -I$(pwd)/drivers/misc/mediatek/include \
           -I$(pwd)/drivers/misc/mediatek/include/mt-plat \
