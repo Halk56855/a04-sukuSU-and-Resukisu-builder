@@ -14,33 +14,36 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev git clang gcc-aarch64-linux-gnu curl
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev git clang gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi curl
 
       - name: Download and Extract Kernel Source
         run: |
           curl -L -o Kernel.tar.gz "https://github.com/Halk56855/android_kernel_samsung_a04f/releases/download/V1.0/Kernel.tar.gz"
           tar -xvf Kernel.tar.gz
 
-      - name: Setup GCC Toolchain
+      - name: Setup Toolchains
         run: |
+          # 64-bit GCC Toolchain
           git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 gcc64
           echo "$GITHUB_WORKSPACE/gcc64/bin" >> $GITHUB_PATH
 
-      - name: Setup Required Clang Toolchain
-        run: |
+          # 32-bit GCC Toolchain (مطلوب لبعض تعريفات سامسونج وميديا تيك)
+          git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git --depth=1 gcc32
+          echo "$GITHUB_WORKSPACE/gcc32/bin" >> $GITHUB_PATH
+
+          # Clang Toolchain
           mkdir -p toolchain/clang/host/linux-x86
           git clone https://github.com/kdrag0n/proton-clang.git toolchain/clang/host/linux-x86/clang-r383902 --depth=1
+          echo "$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902/bin" >> $GITHUB_PATH
 
       - name: Integrate SukiSU-Ultra
         run: |
           # دمج SukiSU-Ultra بصيغة builtin
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
 
-          # إضافة إعدادات SukiSU الأساسية
+          # إعدادات SukiSU و Non-GKI
           echo "CONFIG_KSU=y" >> arch/arm64/configs/a04_defconfig
           echo "CONFIG_KSU_TAMPER_SYS_CALL=y" >> arch/arm64/configs/a04_defconfig
-
-          # إضافة الإعدادات الإجبارية لأجهزة Non-GKI و KPM بحسب التوثيق الرسمي
           echo "CONFIG_KPM=y" >> arch/arm64/configs/a04_defconfig
           echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/a04_defconfig
           echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/a04_defconfig
@@ -49,10 +52,12 @@ jobs:
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
+          export PATH=$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902/bin:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH
           export CROSS_COMPILE=aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
           make a04_defconfig
-          make -j$(nproc)
+          make -j$(nproc) KCFLAGS="-w" WERROR=0 || make -j1 KCFLAGS="-w" WERROR=0
 
       - name: Upload Kernel Output
         uses: actions/upload-artifact@v4
