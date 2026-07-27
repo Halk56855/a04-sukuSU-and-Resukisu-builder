@@ -28,8 +28,10 @@ jobs:
 
       - name: Setup Required Clang Toolchain (clang-r383902)
         run: |
-          mkdir -p toolchain/clang/host/linux-x86
-          git clone https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r383902 toolchain/clang/host/linux-x86/clang-r383902 --depth=1
+          mkdir -p toolchain/clang/host/linux-x86/clang-r383902
+          curl -L -o clang.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/master/clang-r383902.tar.gz"
+          tar -xvf clang.tar.gz -C toolchain/clang/host/linux-x86/clang-r383902
+          rm clang.tar.gz
 
       - name: Integrate SukiSU-Ultra
         run: |
