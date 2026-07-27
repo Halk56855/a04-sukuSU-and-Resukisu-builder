@@ -26,10 +26,10 @@ jobs:
           git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 gcc64
           echo "$GITHUB_WORKSPACE/gcc64/bin" >> $GITHUB_PATH
 
-      - name: Setup Required Clang Toolchain (clang-r383902)
+      - name: Setup Required Clang Toolchain
         run: |
           mkdir -p toolchain/clang/host/linux-x86
-          git clone https://gitlab.com/ZyCronite/clang-r383902.git toolchain/clang/host/linux-x86/clang-r383902 --depth=1
+          git clone https://github.com/kdrag0n/proton-clang.git toolchain/clang/host/linux-x86/clang-r383902 --depth=1
 
       - name: Integrate SukiSU-Ultra
         run: |
