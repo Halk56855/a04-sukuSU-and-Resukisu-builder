@@ -20,6 +20,8 @@ jobs:
         run: |
           curl -L -o Kernel.tar.gz "https://github.com/Halk56855/android_kernel_samsung_a04f/releases/download/V1.0/Kernel.tar.gz"
           tar -xvf Kernel.tar.gz
+          # منح صلاحيات الكتابة لجميع ملفات الكيرنل المستخرجة لمنع مشاكل Permission denied
+          chmod -R +w .
 
       - name: Setup Toolchains
         run: |
