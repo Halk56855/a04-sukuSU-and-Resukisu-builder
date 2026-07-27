@@ -64,7 +64,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-          # المسارات المخصصة لـ MT6765 (PPM v3, SPM, CCU, CLKBUF)
+          # المسارات المخصصة لـ MediaTek ومحرك الطاقة SPM/idle_fs
           EXTRA_FLAGS="-w -I$(pwd)/kernel/trace -Ikernel/trace \
           -I$(pwd)/drivers/misc/mediatek/include \
           -I$(pwd)/drivers/misc/mediatek/include/mt-plat \
@@ -75,11 +75,13 @@ jobs:
           -I$(pwd)/drivers/misc/mediatek/base/power/spm \
           -I$(pwd)/drivers/misc/mediatek/base/power/spm/inc \
           -I$(pwd)/drivers/misc/mediatek/base/power/spm/common \
+          -I$(pwd)/drivers/misc/mediatek/base/power/spm/common/mtk_idle_fs \
           -I$(pwd)/drivers/misc/mediatek/base/power/spm/mt6765 \
           -I$(pwd)/drivers/misc/mediatek/base/power/spm/mt6765/inc \
           -I$(pwd)/drivers/misc/mediatek/base/power/include \
           -I$(pwd)/drivers/misc/mediatek/base/power/include/spm \
           -I$(pwd)/drivers/misc/mediatek/base/power/include/spm/mt6765 \
+          -I$(pwd)/drivers/misc/mediatek/base/power/qos \
           -I$(pwd)/drivers/misc/mediatek/ccu/inc \
           -I$(pwd)/drivers/misc/mediatek/ccu/src \
           -I$(pwd)/drivers/misc/mediatek/ccu/src/mt6765 \
