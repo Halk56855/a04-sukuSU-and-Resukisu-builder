@@ -43,10 +43,15 @@ jobs:
 
           echo "$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902/bin" >> $GITHUB_PATH
 
-      - name: Integrate SukiSU-Ultra & Patch Clkbuf
+      - name: Integrate SukiSU-Ultra & Apply Patches
         run: |
           # دمج SukiSU-Ultra بصيغة builtin
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
+
+          # إصلاح access_ok ليتوافق مع نواة 4.19 (تحويل المدخلات إلى 3 عناصر)
+          if [ -d drivers/kernelsu/kpm ]; then
+            sed -i 's/access_ok(/access_ok(0, /g' drivers/kernelsu/kpm/*.c
+          fi
 
           # إعدادات SukiSU و Non-GKI
           echo "CONFIG_KSU=y" >> arch/arm64/configs/a04_defconfig
