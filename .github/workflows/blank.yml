@@ -64,16 +64,29 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-          # استخدام مسارات أساسية مركزة لتفادي خطأ طول الأوامر
+          # المسارات المخصصة لـ MT6765 (PPM v3, SPM, CCU, CLKBUF)
           EXTRA_FLAGS="-w -I$(pwd)/kernel/trace -Ikernel/trace \
           -I$(pwd)/drivers/misc/mediatek/include \
           -I$(pwd)/drivers/misc/mediatek/include/mt-plat \
           -I$(pwd)/drivers/misc/mediatek/include/mt-plat/mt6765 \
           -I$(pwd)/drivers/misc/mediatek/base/power/ppm_v3/inc \
+          -I$(pwd)/drivers/misc/mediatek/base/power/ppm_v3/inc/mach/mt6765 \
+          -I$(pwd)/drivers/misc/mediatek/base/power/ppm_v3/src/mach/mt6765 \
+          -I$(pwd)/drivers/misc/mediatek/base/power/spm \
           -I$(pwd)/drivers/misc/mediatek/base/power/spm/inc \
+          -I$(pwd)/drivers/misc/mediatek/base/power/spm/common \
+          -I$(pwd)/drivers/misc/mediatek/base/power/spm/mt6765 \
+          -I$(pwd)/drivers/misc/mediatek/base/power/spm/mt6765/inc \
           -I$(pwd)/drivers/misc/mediatek/base/power/include \
+          -I$(pwd)/drivers/misc/mediatek/base/power/include/spm \
+          -I$(pwd)/drivers/misc/mediatek/base/power/include/spm/mt6765 \
           -I$(pwd)/drivers/misc/mediatek/ccu/inc \
-          -I$(pwd)/drivers/misc/mediatek/clkbuf/inc"
+          -I$(pwd)/drivers/misc/mediatek/ccu/src \
+          -I$(pwd)/drivers/misc/mediatek/ccu/src/mt6765 \
+          -I$(pwd)/drivers/misc/mediatek/clkbuf/inc \
+          -I$(pwd)/drivers/misc/mediatek/clkbuf/src \
+          -I$(pwd)/drivers/misc/mediatek/clkbuf/src/mt6765 \
+          -I$(pwd)/drivers/misc/mediatek/clkbuf/mt6765"
 
           make a04_defconfig
           make -j$(nproc) KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++ || make -j1 KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++
