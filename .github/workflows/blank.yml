@@ -53,7 +53,7 @@ jobs:
             sed -i 's/access_ok(/access_ok(0, /g' drivers/kernelsu/kpm/*.c
           fi
 
-          # 2. إصلاح خطأ fallthrough باستخدام @ كمحدد لمنع خطأ sed
+          # 2. إصلاح خطأ fallthrough المتوافق مع الأنوية الحديثة فقط
           find drivers/kernelsu/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@\bfallthrough;@/* fallthrough */;@g' {} +
 
           # 3. إصلاح خطأ تمرير المؤشر في sulog/event.c
@@ -75,10 +75,13 @@ jobs:
           # تعطيل IKHEADERS لتجنب خطأ kheaders_data
           echo "CONFIG_IKHEADERS=n" >> arch/arm64/configs/a04_defconfig
 
-          # تعطيل بناء ملفات clkbuf المعطوبة لمنع توقف البناء
+          # إزالة clkbuf المعطوبة بالكامل بدون التسبب بخطأ في Makefile
           if [ -d drivers/misc/mediatek/clkbuf ]; then
-            echo "obj-" > drivers/misc/mediatek/clkbuf/Makefile
+            echo "# empty" > drivers/misc/mediatek/clkbuf/Makefile
             rm -f drivers/misc/mediatek/clkbuf/src/*.c
+          fi
+          if [ -f drivers/misc/mediatek/Makefile ]; then
+            sed -i '/clkbuf/d' drivers/misc/mediatek/Makefile
           fi
 
       - name: Build Kernel
