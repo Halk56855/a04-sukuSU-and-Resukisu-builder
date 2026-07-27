@@ -106,8 +106,8 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-          # المسارات الأساسية لـ MediaTek ومحركات المشغلات و mmdvfs
-          EXTRA_FLAGS="-w -I$(pwd)/kernel/trace -Ikernel/trace \
+          # المسارات الأساسية لـ MediaTek ومحركات المشغلات وجذر المشروع
+          EXTRA_FLAGS="-w -I$(pwd) -I. -I$(pwd)/kernel/trace -Ikernel/trace \
           -I$(pwd)/drivers/misc/mediatek/include \
           -I$(pwd)/drivers/misc/mediatek/include/mt-plat \
           -I$(pwd)/drivers/misc/mediatek/include/mt-plat/mt6765 \
