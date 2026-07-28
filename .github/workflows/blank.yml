@@ -85,8 +85,11 @@ jobs:
             sed -i "s@#define TRACE_INCLUDE_PATH \.@#define TRACE_INCLUDE_PATH $dir@g" "$file"
           done
 
-          # 6. تصحيح ion_phys_addr_t في كامل مجلد drivers/ وتعديل مسارات تضمين ION
-          find drivers/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@\bion_phys_addr_t\b@phys_addr_t@g' {} + 2>/dev/null || true
+          # 6. تعريف ion_phys_addr_t عالمياً في include/linux/types.h لتجنب التضارب وتغير الأنواع
+          if ! grep -q "ion_phys_addr_t" include/linux/types.h; then
+            echo "typedef phys_addr_t ion_phys_addr_t;" >> include/linux/types.h
+          fi
+
           find drivers/staging/android/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <ion.h>@#include "ion.h"@g' {} + 2>/dev/null || true
           find drivers/staging/android/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <ion_priv.h>@#include "ion_priv.h"@g' {} + 2>/dev/null || true
 
