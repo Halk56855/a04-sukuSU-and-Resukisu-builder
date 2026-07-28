@@ -33,36 +33,39 @@ jobs:
             unzip \
             python3 \
             clang \
-            llvm
+            llvm \
+            lld
 
-      - name: Prepare Kernel Source & SukiSU-Ultra
+      - name: Clone Kernel Source
         run: |
-          echo "Preparing source and applying KernelSU / SukiSU-Ultra..."
-          # ضع هنا أوامر جلب مصدر النواة أو دمج SukiSU-Ultra إذا لم تكن مدمجة مسبقاً في المستودع
-          
-          # خطوة إصلاح مشكلة مجلد kpm تلقائياً لمنع خطأ البناء السابق:
+          echo "Cloning kernel source from your repository..."
+          git clone --depth=1 https://github.com/Halk56855/android_kernel_samsung_a04f.git kernel_source
+
+      - name: Prepare Kernel Source & Fix KPM
+        run: |
+          cd kernel_source
+          echo "Fixing KPM path (copying kpms to kpm)..."
           if [ -d "drivers/kernelsu/kpms" ] && [ ! -d "drivers/kernelsu/kpm" ]; then
-            echo "Moving/Copying kpms to kpm to fix build error..."
             cp -r drivers/kernelsu/kpms drivers/kernelsu/kpm
+          elif [ -d "kernel/drivers/kernelsu/kpms" ] && [ ! -d "kernel/drivers/kernelsu/kpm" ]; then
+            cp -r kernel/drivers/kernelsu/kpms kernel/drivers/kernelsu/kpm
           fi
 
       - name: Build Kernel
         run: |
+          cd kernel_source
           echo "Starting kernel compilation..."
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # حدد أوامر البناء الخاصة بنواة جهازك (أوامر الـ make المناسبة لجهاز A04)
-          # مثال:
-          # make O=out defconfig
-          # make O=out -j$(nproc)
-          
-          echo "Build script placeholder - configure your specific make commands here."
+          make O=out clean
+          make O=out defconfig
+          make O=out -j$(nproc)
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
           name: A04-Kernel-SukiSU
           path: |
-            out/arch/arm64/boot/Image
-            out/arch/arm64/boot/dts/*.dtb
+            kernel_source/out/arch/arm64/boot/Image
+            kernel_source/out/arch/arm64/boot/dts/*.dtb
