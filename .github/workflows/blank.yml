@@ -44,15 +44,11 @@ jobs:
           echo "Extracting kernel source..."
           tar -xzf Kernel.tar.gz -C kernel_source --strip-components=1 || tar -xzf Kernel.tar.gz -C kernel_source
 
-      - name: Fix KPM Path
+      - name: Apply SukiSU-Ultra
         run: |
           cd kernel_source
-          echo "Fixing KPM path (copying kpms to kpm)..."
-          if [ -d "drivers/kernelsu/kpms" ] && [ ! -d "drivers/kernelsu/kpm" ]; then
-            cp -r drivers/kernelsu/kpms drivers/kernelsu/kpm
-          elif [ -d "kernel/drivers/kernelsu/kpms" ] && [ ! -d "kernel/drivers/kernelsu/kpm" ]; then
-            cp -r kernel/drivers/kernelsu/kpms kernel/drivers/kernelsu/kpm
-          fi
+          echo "Applying SukiSU-Ultra using official setup script..."
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
 
       - name: Build Kernel
         run: |
