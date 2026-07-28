@@ -95,7 +95,7 @@ jobs:
                           f.write(c)
           print("Successfully patched SELinux files for Kernel 4.19")
 
-          # كتابة Makefile الموحد لـ KernelSU ودعم KPM
+          # كتابة Makefile الموحد لـ KernelSU ودعم KPM (مع التحقق من وجود مجلد kpm فعلياً)
           target_dirs = ["drivers/kernelsu", "KernelSU"]
           ksu_dir = None
           for d in target_dirs:
@@ -112,11 +112,16 @@ jobs:
 
               inc_flags = " ".join([f"-I$(srctree)/$(src)/{d}" for d in set(inc_dirs) if d != "."])
               mk_path = os.path.join(ksu_dir, "Makefile")
+
+              # لا تضف obj-$(CONFIG_KPM) += kpm/ إلا إذا كان المجلد موجوداً فعلياً
+              kpm_line = ""
+              if os.path.isdir(os.path.join(ksu_dir, "kpm")):
+                  kpm_line = "obj-$(CONFIG_KPM) += kpm/\n"
+
               mk_content = f"""
           obj-y += kernelsu.o
           kernelsu-objs := ksu.o
-          obj-$(CONFIG_KPM) += kpm/
-          ccflags-y += -DLINUX_VERSION_CODE=267333 -DKSU_VERSION=16 -DKSU_VERSION_FULL=\\"1.0.0\\" -DKSU_VERSION_CODE=10000 -DKSU_VERSION_NAME=\\"1.0.0\\" -I$(srctree)/$(src) -I$(srctree)/$(src)/include -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include {inc_flags} -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KPM=1
+          {kpm_line}ccflags-y += -DLINUX_VERSION_CODE=267333 -DKSU_VERSION=16 -DKSU_VERSION_FULL=\\"1.0.0\\" -DKSU_VERSION_CODE=10000 -DKSU_VERSION_NAME=\\"1.0.0\\" -I$(srctree)/$(src) -I$(srctree)/$(src)/include -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include {inc_flags} -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KPM=1
           """
               with open(mk_path, "w") as f:
                   f.write(mk_content.strip() + "\n")
