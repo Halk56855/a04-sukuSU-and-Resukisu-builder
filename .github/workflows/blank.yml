@@ -14,7 +14,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev git clang gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi curl cpio
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev git clang gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi curl cpio python3
 
       - name: Download and Extract Kernel Source
         run: |
@@ -46,12 +46,40 @@ jobs:
           # دمج SukiSU-Ultra بصيغة builtin
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
 
-          # إجبار تجميع selinux_hide دائمًا بدون الاعتماد على Kconfig
-          find drivers/kernelsu/ KernelSU/ -name "Makefile" 2>/dev/null -exec sed -i 's/CONFIG_KSU_SELINUX_HIDE/y/g' {} +
-          find drivers/kernelsu/ KernelSU/ -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null -exec sed -i '1i#ifndef CONFIG_KSU_SELINUX_HIDE\n#define CONFIG_KSU_SELINUX_HIDE 1\n#endif' {} +
+          # إعادة بناء Makefile لـ KernelSU لضمان تجميع كافة ملفات SELinux Hide بدون KPM
+          python3 -c '
+          import os
 
-          # تعطيل تجميع وحدات KPM نهائياً لمنع أخطاء التجميع
-          find drivers/kernelsu/ KernelSU/ -name "Makefile" 2>/dev/null -exec sed -i 's/obj-$(CONFIG_KPM)/# obj-$(CONFIG_KPM)/g' {} + || true
+          target_dirs = ["drivers/kernelsu", "KernelSU"]
+          ksu_dir = None
+          for d in target_dirs:
+              if os.path.exists(d):
+                  ksu_dir = d
+                  break
+
+          if ksu_dir:
+              c_objs = []
+              for root, dirs, files in os.walk(ksu_dir):
+                  if "kpm" in dirs:
+                      dirs.remove("kpm")  # استبعاد مجلد KPM تماماً
+                  for f in files:
+                      if f.endswith(".c"):
+                          full_path = os.path.join(root, f)
+                          rel_path = os.path.relpath(full_path, ksu_dir)
+                          obj_path = os.path.splitext(rel_path)[0] + ".o"
+                          c_objs.append(obj_path)
+
+              mk_path = os.path.join(ksu_dir, "Makefile")
+              objs_line = " ".join(c_objs)
+              mk_content = f"""
+          obj-y += ksu.o
+          ksu-objs := {objs_line}
+          ccflags-y += -I$(srctree)/$(src) -I$(srctree)/$(src)/include -DCONFIG_KSU_SELINUX_HIDE=1
+          """
+              with open(mk_path, "w") as f:
+                  f.write(mk_content.strip() + "\n")
+              print("Successfully created custom Makefile for SukiSU")
+          '
 
           # 1. إصلاح fallthrough
           find drivers/kernelsu/ KernelSU/ -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null -exec sed -i 's@\bfallthrough;@/* fallthrough */;@g' {} + || true
