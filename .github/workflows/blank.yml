@@ -55,7 +55,7 @@ jobs:
           # 2. حقن LINUX_VERSION_CODE وإصدارات KSU في أول كل ملف C/H
           find drivers/kernelsu/ KernelSU/ -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null -exec sed -i '1i#undef LINUX_VERSION_CODE\n#define LINUX_VERSION_CODE 267333\n#ifndef KERNEL_VERSION\n#define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))\n#endif\n#ifndef KSU_VERSION\n#define KSU_VERSION 16\n#endif\n#ifndef KSU_VERSION_FULL\n#define KSU_VERSION_FULL "1.0.0"\n#endif\n#ifndef KSU_VERSION_CODE\n#define KSU_VERSION_CODE 10000\n#endif\n#ifndef KSU_VERSION_NAME\n#define KSU_VERSION_NAME "1.0.0"\n#endif\n#ifndef KSU_INVALID_APPID\n#define KSU_INVALID_APPID -1\n#endif\n#ifndef PER_USER_RANGE\n#define PER_USER_RANGE 100000\n#endif\n#ifndef KSU_MAX_PACKAGE_NAME\n#define KSU_MAX_PACKAGE_NAME 256\n#endif' {} + || true
 
-          # 3. معالجة ورقع ملفات SukiSU لتتوافق مع نواة 4.19 مع إنشاء Makefile لـ kpm تلقائياً
+          # 3. معالجة ورقع ملفات SukiSU لتتوافق مع نواة 4.19 مع إصلاح access_ok في kpm.c تلقائياً
           python3 -c '
           import os, re
 
@@ -73,6 +73,17 @@ jobs:
               with open(fw_path, "w") as f:
                   f.write(content)
               print("Successfully patched file_wrapper.c for Kernel 4.19")
+
+          # إصلاح access_ok في ملف kpm.c إذا كان موجوداً
+          kpm_c_path = "drivers/kernelsu/kpm/kpm.c"
+          if os.path.exists(kpm_c_path):
+              with open(kpm_c_path, "r") as f:
+                  kc = f.read()
+              # تحويل access_ok(arg, size) إلى access_ok(0, arg, size)
+              kc = re.sub(r"\baccess_ok\s*\(\s*([^,]+),\s*([^)]+)\)", r"access_ok(0, \1, \2)", kc)
+              with open(kpm_c_path, "w") as f:
+                  f.write(kc)
+              print("Successfully patched access_ok in kpm.c")
 
           for root, dirs, files in os.walk("drivers/kernelsu"):
               for file in files:
