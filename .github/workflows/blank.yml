@@ -111,7 +111,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-          # المسارات الأساسية لـ MediaTek ومحركات المشغلات و USB20
+          # المسارات الأساسية لـ MediaTek ومحركات المشغلات و USB20 و Video
           EXTRA_FLAGS="-w -I$(pwd) -I. -I$(pwd)/kernel/trace -Ikernel/trace \
           -I$(pwd)/drivers/misc/mediatek/include \
           -I$(pwd)/drivers/misc/mediatek/include/mt-plat \
@@ -133,6 +133,12 @@ jobs:
           -I$(pwd)/drivers/misc/mediatek/mmdvfs \
           -I$(pwd)/drivers/misc/mediatek/power_throttling \
           -I$(pwd)/drivers/misc/mediatek/usb20 \
+          -I$(pwd)/drivers/misc/mediatek/video \
+          -I$(pwd)/drivers/misc/mediatek/video/common/layering_rule_base \
+          -I$(pwd)/drivers/misc/mediatek/video/common/layering_rule_base/v1.1 \
+          -I$(pwd)/drivers/misc/mediatek/video/common/layering_rule_base/v1.1/inc \
+          -I$(pwd)/drivers/misc/mediatek/video/mt6765 \
+          -I$(pwd)/drivers/misc/mediatek/video/mt6765/videox \
           -I$(pwd)/drivers/misc/mediatek/typec \
           -I$(pwd)/drivers/misc/mediatek/typec/tcpc \
           -I$(pwd)/drivers/misc/mediatek/typec/tcpc/inc \
