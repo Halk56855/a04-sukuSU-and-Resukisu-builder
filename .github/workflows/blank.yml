@@ -55,11 +55,10 @@ jobs:
           # 2. حقن LINUX_VERSION_CODE (4.19.325 = 267333) و KSU_VERSION في أول كل ملف C/H في SukiSU
           find drivers/kernelsu/ KernelSU/ -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null -exec sed -i '1i#undef LINUX_VERSION_CODE\n#define LINUX_VERSION_CODE 267333\n#ifndef KERNEL_VERSION\n#define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))\n#endif\n#ifndef KSU_VERSION\n#define KSU_VERSION 16\n#endif\n#ifndef KSU_VERSION_FULL\n#define KSU_VERSION_FULL "1.0.0"\n#endif\n#ifndef KSU_VERSION_CODE\n#define KSU_VERSION_CODE 10000\n#endif\n#ifndef KSU_VERSION_NAME\n#define KSU_VERSION_NAME "1.0.0"\n#endif\n#ifndef KSU_INVALID_APPID\n#define KSU_INVALID_APPID -1\n#endif\n#ifndef PER_USER_RANGE\n#define PER_USER_RANGE 100000\n#endif\n#ifndef KSU_MAX_PACKAGE_NAME\n#define KSU_MAX_PACKAGE_NAME 256\n#endif' {} + || true
 
-          # 3. معالجة ورقع ملفات SukiSU لتتوافق تماماً مع نواة 4.19
+          # 3. معالجة ورقع ملفات SukiSU لتتوافق تماماً مع نواة 4.19 وإزالة remap_file_range
           python3 -c '
           import os, re
 
-          # إصلاح file_wrapper.c وإزالة تعارضات remap_file_range و fadvise وإصلاح الدوال الثابتة
           fw_path = "drivers/kernelsu/infra/file_wrapper.c"
           if os.path.exists(fw_path):
               with open(fw_path, "r") as f:
@@ -68,10 +67,14 @@ jobs:
               content = content.replace("static void ksu_release_file_wrapper", "void ksu_release_file_wrapper")
               content = re.sub(r"p->ops\.remap_file_range\s*=.*?;", "/* p->ops.remap_file_range disabled */", content)
               content = re.sub(r"p->ops\.fadvise\s*=.*?;", "/* p->ops.fadvise disabled */", content)
+              content = content.replace("REMAP_FILE_DEDUP", "0")
               
+              # إزالة أو تعطيل دالة ksu_wrapper_remap_file_range بالكامل لتجنب أخطاء نواة 4.19
+              content = re.sub(r"(static\s+\w+\s+ksu_wrapper_remap_file_range\s*\(.*?\n\{)(.*?\n\})(\s*\})?", r"/* \1\2\3 */", content, flags=re.DOTALL)
+
               with open(fw_path, "w") as f:
                   f.write(content)
-              print("Successfully patched file_wrapper.c")
+              print("Successfully patched file_wrapper.c for Kernel 4.19")
 
           # إصلاح ملفات SELinux في SukiSU لتوافق نواة 4.19 وإلغاء التعارضات
           for root, dirs, files in os.walk("drivers/kernelsu"):
