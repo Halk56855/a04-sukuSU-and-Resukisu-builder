@@ -79,8 +79,8 @@ jobs:
           find drivers/power/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <charger_class.h>@#include "charger_class.h"@g; s@#include <wingtech_charger.h>@#include "wingtech_charger.h"@g' {} + 2>/dev/null || true
           find drivers/soc/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <mtk-pm-qos-trace.h>@#include "mtk-pm-qos-trace.h"@g' {} + 2>/dev/null || true
 
-          # 5. إصلاح مسار TRACE_INCLUDE_PATH لشجرة الكيرنل بأكملها
-          find . -type f -name "*.h" -not -path "*/.git/*" -exec grep -l "#define TRACE_INCLUDE_PATH \." {} + | while read -r file; do
+          # 5. إصلاح مسار TRACE_INCLUDE_PATH لمجلدات MediaTek و kernel/trace فقط
+          find drivers/misc/mediatek/ drivers/soc/mediatek/ kernel/trace/ -type f -name "*.h" 2>/dev/null -exec grep -l "#define TRACE_INCLUDE_PATH \." {} + | while read -r file; do
             rel_file="${file#./}"
             dir=$(dirname "$rel_file")
             sed -i "s@#define TRACE_INCLUDE_PATH \.@#define TRACE_INCLUDE_PATH $dir@g" "$rel_file"
