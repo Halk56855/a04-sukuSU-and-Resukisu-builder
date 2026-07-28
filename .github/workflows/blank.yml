@@ -46,10 +46,13 @@ jobs:
           # دمج SukiSU-Ultra بصيغة builtin
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
 
-          # 1. حقن الترويسات الأساسية تلقائياً في السطر الأول لجميع ملفات C في SukiSU لإنهاء مشكلة throne_tracker.c
-          find drivers/kernelsu/ KernelSU/ -name "*.c" 2>/dev/null -exec sed -i '1i#include <linux/version.h>\n#include <linux/types.h>\n#include <linux/errno.h>\n#include <linux/kernel.h>' {} + || true
+          # 1. حقن كافة ترويسات النواة المطلوبة لـ throne_tracker وجميع ملفات C في SukiSU
+          find drivers/kernelsu/ KernelSU/ -name "*.c" 2>/dev/null -exec sed -i '1i#include <linux/version.h>\n#include <linux/types.h>\n#include <linux/errno.h>\n#include <linux/kernel.h>\n#include <linux/fs.h>\n#include <linux/slab.h>\n#include <linux/file.h>\n#include <linux/dirent.h>\n#include <linux/list.h>\n#include <linux/fcntl.h>\n#include <linux/string.h>' {} + || true
 
-          # 2. إعادة بناء Makefile لـ KernelSU لضمان ربط جميع الملفات بدون KPM
+          # 2. ضمان تعريف KSU_MAX_PACKAGE_NAME إذا كان مفقوداً
+          find drivers/kernelsu/ KernelSU/ -name "throne_tracker.c" 2>/dev/null -exec sed -i '1i#ifndef KSU_MAX_PACKAGE_NAME\n#define KSU_MAX_PACKAGE_NAME 256\n#endif' {} + || true
+
+          # 3. إعادة بناء Makefile مع إضافة كافة المجلدات الفرعية إلى -I واستبعاد KPM
           python3 -c '
           import os
 
@@ -62,9 +65,13 @@ jobs:
 
           if ksu_dir:
               c_objs = []
+              inc_dirs = []
               for root, dirs, files in os.walk(ksu_dir):
                   if "kpm" in dirs:
                       dirs.remove("kpm")  # استبعاد KPM تماماً
+                  for d in dirs:
+                      rel_d = os.path.relpath(os.path.join(root, d), ksu_dir)
+                      inc_dirs.append(rel_d)
                   for f in files:
                       if f.endswith(".c"):
                           full_path = os.path.join(root, f)
@@ -72,25 +79,26 @@ jobs:
                           obj_path = os.path.splitext(rel_path)[0] + ".o"
                           c_objs.append(obj_path)
 
+              inc_flags = " ".join([f"-I$(srctree)/$(src)/{d}" for d in set(inc_dirs) if d != "."])
               mk_path = os.path.join(ksu_dir, "Makefile")
               objs_line = " ".join(c_objs)
               mk_content = f"""
           obj-y += ksu.o
           ksu-objs := {objs_line}
-          ccflags-y += -I$(srctree)/$(src) -I$(srctree)/$(src)/include -DCONFIG_KSU_SELINUX_HIDE=1
+          ccflags-y += -I$(srctree)/$(src) -I$(srctree)/$(src)/include {inc_flags} -DCONFIG_KSU_SELINUX_HIDE=1
           """
               with open(mk_path, "w") as f:
                   f.write(mk_content.strip() + "\n")
               print("Successfully created custom Makefile for SukiSU")
           '
 
-          # 3. إصلاح fallthrough
+          # 4. إصلاح fallthrough
           find drivers/kernelsu/ KernelSU/ -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null -exec sed -i 's@\bfallthrough;@/* fallthrough */;@g' {} + || true
 
-          # 4. إصلاح خطأ تمرير المؤشر في sulog/event.c
+          # 5. إصلاح خطأ تمرير المؤشر في sulog/event.c
           find drivers/kernelsu/ KernelSU/ -name "event.c" 2>/dev/null -exec sed -i 's/#define USER_ARG_NULL user_arg_null_ptr()/#define USER_ARG_NULL (*user_arg_null_ptr())/g' {} + || true
 
-          # 5. إصلاح تضمين ملفات الرأس المحلية لبرامج تشغيل MediaTek
+          # 6. إصلاح تضمين ملفات الرأس المحلية لبرامج تشغيل MediaTek
           find drivers/misc/mediatek/dbgtop/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <dbgtop.h>@#include "dbgtop.h"@g' {} + 2>/dev/null || true
           find drivers/misc/mediatek/debug_latch/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <plat_dbg_info.h>@#include "plat_dbg_info.h"@g' {} + 2>/dev/null || true
           find drivers/misc/mediatek/dramc/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <dramc_io.h>@#include "dramc_io.h"@g' {} + 2>/dev/null || true
@@ -108,7 +116,7 @@ jobs:
           find drivers/power/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <charger_class.h>@#include "charger_class.h"@g; s@#include <wingtech_charger.h>@#include "wingtech_charger.h"@g' {} + 2>/dev/null || true
           find drivers/soc/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <mtk-pm-qos-trace.h>@#include "mtk-pm-qos-trace.h"@g' {} + 2>/dev/null || true
 
-          # 6. إصلاح مسار TRACE_INCLUDE_PATH
+          # 7. إصلاح مسار TRACE_INCLUDE_PATH
           find drivers/misc/mediatek/ drivers/soc/mediatek/ kernel/trace/ -type f -name "*.h" 2>/dev/null -exec grep -l "#define TRACE_INCLUDE_PATH \." {} + | while read -r file; do
             rel_file="${file#./}"
             dir=$(dirname "$rel_file")
