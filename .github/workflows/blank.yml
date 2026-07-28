@@ -95,6 +95,9 @@ jobs:
           echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/a04_defconfig
           echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/a04_defconfig
 
+          # تعطيل تتبع mac80211 لتجنب أخطاء Linker مع __tracepoint_drv_*
+          echo "CONFIG_MAC80211_DRIVER_API_TRACER=n" >> arch/arm64/configs/a04_defconfig
+
           # تعطيل SUSFS لتجنب البحث عن susfs.h غير الموجود
           echo "CONFIG_KSU_SUSFS=n" >> arch/arm64/configs/a04_defconfig
           echo "CONFIG_KSU_SUSFS_HAS_SU=n" >> arch/arm64/configs/a04_defconfig
@@ -119,8 +122,8 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-          # المسارات الأساسية وتمرير تعريف ion_phys_addr_t عبر رايات التجميع لتفادي خطأ المجمع
-          EXTRA_FLAGS="-w -Dion_phys_addr_t=phys_addr_t -I$(pwd) -I. -I$(pwd)/kernel/trace -Ikernel/trace \
+          # المسارات الأساسية وتمرير تعريف ion_phys_addr_t عبر رايات التجميع
+          EXTRA_FLAGS="-w -Dion_phys_addr_t=phys_addr_t -I$(pwd) -I. \
           -I$(pwd)/drivers/staging/android/mtk_ion \
           -I$(pwd)/drivers/staging/android/mtk_ion/mtk \
           -I$(pwd)/drivers/staging/android \
