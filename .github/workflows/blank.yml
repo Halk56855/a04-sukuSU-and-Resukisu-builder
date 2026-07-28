@@ -71,8 +71,9 @@ jobs:
           find drivers/misc/mediatek/power_throttling/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <mtk_battery_percentage_throttling.h>@#include "mtk_battery_percentage_throttling.h"@g' {} + 2>/dev/null || true
           find drivers/misc/mediatek/typec/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include "inc/tcpci.h"@#include "tcpci.h"@g' {} + 2>/dev/null || true
 
-          # تصحيح ملفات الرأس المحلية في وحدة USB20
+          # تصحيح ملفات الرأس المحلية في وحدة USB20 والفيديو
           find drivers/misc/mediatek/usb20/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <musb_core.h>@#include "musb_core.h"@g; s@#include <musb.h>@#include "musb.h"@g; s@#include <musb_dr.h>@#include "musb_dr.h"@g; s@#include <mtk_musb.h>@#include "mtk_musb.h"@g; s@#include <musb_debug.h>@#include "musb_debug.h"@g; s@#include <musbhsdma.h>@#include "musbhsdma.h"@g' {} + 2>/dev/null || true
+          find drivers/misc/mediatek/video/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <display_recorder.h>@#include "display_recorder.h"@g' {} + 2>/dev/null || true
 
           # 5. إصلاح مسار TRACE_INCLUDE_PATH الديناميكي لملفات التتبع في MediaTek
           find drivers/misc/mediatek/ -type f -name "*.h" -exec grep -l "#define TRACE_INCLUDE_PATH \." {} + | while read -r file; do
@@ -134,11 +135,15 @@ jobs:
           -I$(pwd)/drivers/misc/mediatek/power_throttling \
           -I$(pwd)/drivers/misc/mediatek/usb20 \
           -I$(pwd)/drivers/misc/mediatek/video \
+          -I$(pwd)/drivers/misc/mediatek/video/common \
+          -I$(pwd)/drivers/misc/mediatek/video/common/display_recorder \
           -I$(pwd)/drivers/misc/mediatek/video/common/layering_rule_base \
           -I$(pwd)/drivers/misc/mediatek/video/common/layering_rule_base/v1.1 \
           -I$(pwd)/drivers/misc/mediatek/video/common/layering_rule_base/v1.1/inc \
           -I$(pwd)/drivers/misc/mediatek/video/mt6765 \
           -I$(pwd)/drivers/misc/mediatek/video/mt6765/videox \
+          -I$(pwd)/drivers/misc/mediatek/video/mt6765/dispsys \
+          -I$(pwd)/drivers/misc/mediatek/video/include \
           -I$(pwd)/drivers/misc/mediatek/typec \
           -I$(pwd)/drivers/misc/mediatek/typec/tcpc \
           -I$(pwd)/drivers/misc/mediatek/typec/tcpc/inc \
