@@ -46,13 +46,13 @@ jobs:
           # دمج SukiSU-Ultra بصيغة builtin
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
 
-          # 1. حقن كافة ترويسات النواة المطلوبة لـ throne_tracker وجميع ملفات C في SukiSU
-          find drivers/kernelsu/ KernelSU/ -name "*.c" 2>/dev/null -exec sed -i '1i#include <linux/version.h>\n#include <linux/types.h>\n#include <linux/errno.h>\n#include <linux/kernel.h>\n#include <linux/fs.h>\n#include <linux/slab.h>\n#include <linux/file.h>\n#include <linux/dirent.h>\n#include <linux/list.h>\n#include <linux/fcntl.h>\n#include <linux/string.h>' {} + || true
+          # 1. حقن كافة ترويسات النواة المطلوبة في أصل ملفات C في SukiSU
+          find drivers/kernelsu/ KernelSU/ -name "*.c" 2>/dev/null -exec sed -i '1i#include <linux/version.h>\n#include <linux/types.h>\n#include <linux/errno.h>\n#include <linux/kernel.h>\n#include <linux/fs.h>\n#include <linux/slab.h>\n#include <linux/file.h>\n#include <linux/dirent.h>\n#include <linux/list.h>\n#include <linux/fcntl.h>\n#include <linux/string.h>\n#include <linux/cred.h>\n#include <linux/uidgid.h>' {} + || true
 
-          # 2. ضمان تعريف KSU_MAX_PACKAGE_NAME إذا كان مفقوداً
-          find drivers/kernelsu/ KernelSU/ -name "throne_tracker.c" 2>/dev/null -exec sed -i '1i#ifndef KSU_MAX_PACKAGE_NAME\n#define KSU_MAX_PACKAGE_NAME 256\n#endif' {} + || true
+          # 2. حقن تعريفات الثوابت المفقودة (KSU_INVALID_APPID, PER_USER_RANGE, KSU_MAX_PACKAGE_NAME)
+          find drivers/kernelsu/ KernelSU/ -name "throne_tracker.c" 2>/dev/null -exec sed -i '1i#ifndef KSU_INVALID_APPID\n#define KSU_INVALID_APPID -1\n#endif\n#ifndef PER_USER_RANGE\n#define PER_USER_RANGE 100000\n#endif\n#ifndef KSU_MAX_PACKAGE_NAME\n#define KSU_MAX_PACKAGE_NAME 256\n#endif' {} + || true
 
-          # 3. إعادة بناء Makefile مع إضافة كافة المجلدات الفرعية إلى -I واستبعاد KPM
+          # 3. إعادة بناء Makefile لـ KernelSU بمسار مستقل لمنع التكرار الدائري (Circular Dependency)
           python3 -c '
           import os
 
@@ -83,8 +83,8 @@ jobs:
               mk_path = os.path.join(ksu_dir, "Makefile")
               objs_line = " ".join(c_objs)
               mk_content = f"""
-          obj-y += ksu.o
-          ksu-objs := {objs_line}
+          obj-y += kernelsu.o
+          kernelsu-objs := {objs_line}
           ccflags-y += -I$(srctree)/$(src) -I$(srctree)/$(src)/include {inc_flags} -DCONFIG_KSU_SELINUX_HIDE=1
           """
               with open(mk_path, "w") as f:
