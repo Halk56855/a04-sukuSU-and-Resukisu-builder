@@ -36,12 +36,15 @@ jobs:
             llvm \
             lld
 
-      - name: Clone Kernel Source
+      - name: Download and Extract Kernel Source
         run: |
-          echo "Cloning kernel source from your repository..."
-          git clone --depth=1 https://github.com/Halk56855/android_kernel_samsung_a04f.git kernel_source
+          echo "Downloading kernel source archive..."
+          wget -O Kernel.tar.gz https://github.com/Halk56855/android_kernel_samsung_a04f/releases/download/V1.0/Kernel.tar.gz
+          mkdir -p kernel_source
+          echo "Extracting kernel source..."
+          tar -xzf Kernel.tar.gz -C kernel_source --strip-components=1 || tar -xzf Kernel.tar.gz -C kernel_source
 
-      - name: Prepare Kernel Source & Fix KPM
+      - name: Fix KPM Path
         run: |
           cd kernel_source
           echo "Fixing KPM path (copying kpms to kpm)..."
@@ -58,7 +61,6 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          make O=out clean
           make O=out defconfig
           make O=out -j$(nproc)
 
