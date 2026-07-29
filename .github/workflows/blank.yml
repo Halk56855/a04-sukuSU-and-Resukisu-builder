@@ -51,14 +51,14 @@ jobs:
           sed -i 's/$(error/# $(error/g' drivers/kernelsu/Kbuild 2>/dev/null || true
           sed -i 's/$(error/# $(error/g' KernelSU/Kbuild 2>/dev/null || true
 
-          # حقن تعريف fallthrough بشكل آمن ومباشر في ملفات الترويسة بالنواة
+          # حقن تعريف fallthrough بشكل آمن
           if [ -f "include/linux/compiler_types.h" ]; then
             echo -e "\n#ifndef fallthrough\n#define fallthrough do {} while (0)\n#endif" >> include/linux/compiler_types.h
           elif [ -f "include/linux/compiler.h" ]; then
             echo -e "\n#ifndef fallthrough\n#define fallthrough do {} while (0)\n#endif" >> include/linux/compiler.h
           fi
 
-          # إنشاء ملفات الترويسة الأساسية
+          # إنشاء ملفات الترويسة الشاملة مع Inline Stubs المباشرة
           mkdir -p include/linux
           cat << 'EOF' > include/linux/susfs_def.h
           #ifndef _LINUX_SUSFS_DEF_H
@@ -100,17 +100,26 @@ jobs:
           #include <linux/susfs_def.h>
 
           static inline void susfs_init(void) {}
+          static inline bool susfs_starts_with(const char *str, const char *prefix) { return false; }
+          static inline bool susfs_ends_with(const char *str, const char *suffix) { return false; }
+          static inline void susfs_set_current_proc_umounted(void) {}
+          static inline bool susfs_is_current_proc_umounted(void) { return false; }
+          static inline void susfs_start_sdcard_monitor_fn(void) {}
 
-          bool susfs_starts_with(const char *str, const char *prefix);
-          bool susfs_ends_with(const char *str, const char *suffix);
-          void susfs_set_current_proc_umounted(void);
-          bool susfs_is_current_proc_umounted(void);
-          void susfs_start_sdcard_monitor_fn(void);
-          u32 susfs_get_enabled_features(void);
-          int susfs_show_variant(char *buf);
-          int susfs_show_version(char *buf);
-          int susfs_set_avc_log_spoofing(void *arg);
-          extern unsigned long susfs_extra_works;
+          static inline u32 susfs_get_enabled_features(void) { return 0; }
+          static inline int susfs_show_variant(char *buf) { return 0; }
+          static inline int susfs_show_version(char *buf) { return 0; }
+          static inline int susfs_set_avc_log_spoofing(void *arg) { return 0; }
+
+          static inline int susfs_add_sus_path(void *arg) { return 0; }
+          static inline int susfs_add_sus_mount(void *arg) { return 0; }
+          static inline int susfs_add_sus_kstat(void *arg) { return 0; }
+          static inline int susfs_add_try_umount(void *arg) { return 0; }
+          static inline int susfs_set_unshare(void *arg) { return 0; }
+
+          static inline void ksu_init_rc_hook(void) {}
+
+          static unsigned long __maybe_unused susfs_extra_works = 0;
 
           #endif
           EOF
@@ -124,7 +133,7 @@ jobs:
           # حقن التعريفات الثابتة
           find drivers/kernelsu/ KernelSU/ -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null -exec sed -i '1i#undef LINUX_VERSION_CODE\n#define LINUX_VERSION_CODE 267333\n#ifndef KERNEL_VERSION\n#define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))\n#endif\n#ifndef KSU_VERSION\n#define KSU_VERSION 16\n#endif\n#ifndef KSU_VERSION_FULL\n#define KSU_VERSION_FULL "1.0.0"\n#endif\n#ifndef KSU_VERSION_CODE\n#define KSU_VERSION_CODE 10000\n#endif\n#ifndef KSU_VERSION_NAME\n#define KSU_VERSION_NAME "1.0.0"\n#endif\n#ifndef KSU_INVALID_APPID\n#define KSU_INVALID_APPID -1\n#endif\n#ifndef PER_USER_RANGE\n#define PER_USER_RANGE 100000\n#endif\n#ifndef KSU_MAX_PACKAGE_NAME\n#define KSU_MAX_PACKAGE_NAME 256\n#endif' {} + || true
 
-          # سكريبت Python للتعديل الشامل وحقن الدوال الوهمية
+          # سكريبت Python للتعديل والتوافقية
           cat << 'EOF' > patch_ksu.py
           import os
           import re
@@ -209,46 +218,6 @@ jobs:
                       ksud_c = stubs + "\n" + ksud_c
                       with open(ksud_path, "w") as f:
                           f.write(ksud_c)
-
-          # 6. حقن الدوال الوهمية الضعيفة (Weak Stubs) مباشرة في جميع ملفات C التابعة لـ KernelSU
-          weak_stubs_code = """
-          #include <linux/types.h>
-          #ifndef KSU_SUSFS_WEAK_STUBS_DEFINED
-          #define KSU_SUSFS_WEAK_STUBS_DEFINED
-          bool __attribute__((weak)) susfs_starts_with(const char *str, const char *prefix) { return false; }
-          bool __attribute__((weak)) susfs_ends_with(const char *str, const char *suffix) { return false; }
-          void __attribute__((weak)) susfs_set_current_proc_umounted(void) {}
-          bool __attribute__((weak)) susfs_is_current_proc_umounted(void) { return false; }
-          void __attribute__((weak)) susfs_start_sdcard_monitor_fn(void) {}
-          unsigned long __attribute__((weak)) susfs_extra_works = 0;
-
-          u32 __attribute__((weak)) susfs_get_enabled_features(void) { return 0; }
-          int __attribute__((weak)) susfs_show_variant(char *buf) { return 0; }
-          int __attribute__((weak)) susfs_show_version(char *buf) { return 0; }
-          int __attribute__((weak)) susfs_set_avc_log_spoofing(void *arg) { return 0; }
-
-          int __attribute__((weak)) susfs_add_sus_path(void *arg) { return 0; }
-          int __attribute__((weak)) susfs_add_sus_mount(void *arg) { return 0; }
-          int __attribute__((weak)) susfs_add_sus_kstat(void *arg) { return 0; }
-          int __attribute__((weak)) susfs_add_try_umount(void *arg) { return 0; }
-          int __attribute__((weak)) susfs_set_unshare(void *arg) { return 0; }
-
-          void __attribute__((weak)) ksu_init_rc_hook(void) {}
-          #endif
-          """
-
-          for root, dirs, files in os.walk("."):
-              if "kernelsu" in root.lower():
-                  for fname in files:
-                      if fname.endswith(".c"):
-                          fpath = os.path.join(root, fname)
-                          with open(fpath, "r") as fp:
-                              c_code = fp.read()
-                          if "susfs_" in c_code or "ksu_init_rc_hook" in c_code:
-                              if "KSU_SUSFS_WEAK_STUBS_DEFINED" not in c_code:
-                                  c_code = c_code + "\n" + weak_stubs_code
-                                  with open(fpath, "w") as fp:
-                                      fp.write(c_code)
           EOF
 
           python3 patch_ksu.py
@@ -308,7 +277,8 @@ jobs:
 
           export LOCALVERSION="-ReSukiSU"
 
-          EXTRA_FLAGS="-w -O2 -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KPM=1 -DCONFIG_KSU_SUSFS=0 -I$(pwd) -I. \
+          # التضمين القسري (-include) يحقن susfs.h في السطر الأول لكل ملف .c أثناء التجميع
+          EXTRA_FLAGS="-w -O2 -include $(pwd)/include/linux/susfs.h -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KPM=1 -DCONFIG_KSU_SUSFS=0 -I$(pwd) -I. \
           -I$(pwd)/security/selinux \
           -I$(pwd)/security/selinux/include \
           -I$(pwd)/drivers/staging/android/mtk_ion \
