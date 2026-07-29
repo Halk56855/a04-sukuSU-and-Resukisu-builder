@@ -18,7 +18,7 @@ jobs:
 
       - name: Clone Kernel Source Code
         run: |
-          git clone --depth=1 -b latest-B https://github.com/rsuntk-oss/android_kernel_samsung_a04m.git kernel_source
+          git clone --depth=1 -b linux-4.19-y https://github.com/DaniTheSillyFem/kernel_samsung_a04.git kernel_source
           cp -rn kernel_source/* kernel_source/.* . 2>/dev/null || true
           rm -rf kernel_source
           chmod -R +w .
@@ -317,32 +317,34 @@ jobs:
             DEFCONFIG_FILE=$(find arch/arm64/configs/ -name "*a04*" | head -n 1)
           fi
 
-          echo "CONFIG_KSU=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KSU_TAMPER_SYS_CALL=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KSU_SELINUX_HIDE=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSTAT_RESPONSE=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KPM=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KALLSYMS=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KALLSYMS_ALL=y" >> $DEFCONFIG_FILE
+          if [ -n "$DEFCONFIG_FILE" ] && [ -f "$DEFCONFIG_FILE" ]; then
+            echo "CONFIG_KSU=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KSU_MANUAL_HOOK=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KSU_TAMPER_SYS_CALL=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KSU_SELINUX_HIDE=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KSU_SUSFS=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSTAT_RESPONSE=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KPM=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KALLSYMS=y" >> $DEFCONFIG_FILE
+            echo "CONFIG_KALLSYMS_ALL=y" >> $DEFCONFIG_FILE
 
-          # تعطيل IKHEADERS لحل مشكلة التجميع
-          sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $DEFCONFIG_FILE
-          echo "CONFIG_IKHEADERS=n" >> $DEFCONFIG_FILE
+            # تعطيل IKHEADERS لحل مشكلة التجميع
+            sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $DEFCONFIG_FILE
+            echo "CONFIG_IKHEADERS=n" >> $DEFCONFIG_FILE
 
-          # تعطيل الحمايات المسببة لإعادة التشغيل
-          echo "CONFIG_SEC_RESTRICT_FORK=n" >> $DEFCONFIG_FILE
-          echo "CONFIG_SECURITY_DEFEX=n" >> $DEFCONFIG_FILE
-          echo "CONFIG_INTEGRITY=n" >> $DEFCONFIG_FILE
+            # تعطيل الحمايات المسببة لإعادة التشغيل
+            echo "CONFIG_SEC_RESTRICT_FORK=n" >> $DEFCONFIG_FILE
+            echo "CONFIG_SECURITY_DEFEX=n" >> $DEFCONFIG_FILE
+            echo "CONFIG_INTEGRITY=n" >> $DEFCONFIG_FILE
+          fi
 
       - name: Build Kernel
         run: |
@@ -443,7 +445,7 @@ jobs:
           -I$(pwd)/drivers/misc/mediatek/ccu/src \
           -I$(pwd)/drivers/misc/mediatek/ccu/src/mt6765"
 
-          make a04_defconfig || make a04m_defconfig || make defconfig
+          make a04_defconfig || make a05m_defconfig || make defconfig
           make -j$(nproc) KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++ || make -j1 KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++
 
       - name: Package Kernel into AnyKernel3
