@@ -63,7 +63,7 @@ jobs:
           patch -p1 < susfs_src/kernel_patches/KernelSU/1001-kernel-4.19-add-susfs-to-ksu.patch 2>/dev/null || true
           patch -p1 < susfs_src/kernel_patches/50_add_susfs_in_kernel-4.19.patch 2>/dev/null || true
 
-          # حقن تعريف INODE_STATE_SUS_KSTAT المفقود لمنع خطأ fs/proc/task_mmu.c
+          # --- إصلاحات خطأ fs/proc/task_mmu.c ---
           if [ -f "include/linux/fs.h" ]; then
             if ! grep -q "INODE_STATE_SUS_KSTAT" include/linux/fs.h; then
               echo -e "\n#ifndef INODE_STATE_SUS_KSTAT\n#define INODE_STATE_SUS_KSTAT (1 << 27)\n#endif" >> include/linux/fs.h
@@ -72,6 +72,25 @@ jobs:
 
           if [ -f "fs/proc/task_mmu.c" ]; then
             sed -i '1i#ifndef INODE_STATE_SUS_KSTAT\n#define INODE_STATE_SUS_KSTAT (1 << 27)\n#endif' fs/proc/task_mmu.c
+          fi
+
+          # --- إصلاحات خطأ fs/namespace.c و task_struct ---
+          # 1. إضافة susfs_last_fake_mnt_id إلى task_struct في include/linux/sched.h
+          if [ -f "include/linux/sched.h" ]; then
+            if ! grep -q "susfs_last_fake_mnt_id" include/linux/sched.h; then
+              sed -i '/struct task_struct {/a \	u64 susfs_last_fake_mnt_id;' include/linux/sched.h
+            fi
+          fi
+
+          # 2. حقن التعريفات الهيكلية للـ mount و SUSFS في fs/namespace.c
+          if [ -f "fs/namespace.c" ]; then
+            sed -i '1i#include <linux/susfs.h>' fs/namespace.c
+            sed -i '1i#ifndef CL_COPY_MNT_NS\n#define CL_COPY_MNT_NS 0x20\n#endif' fs/namespace.c
+            sed -i '1i#ifndef CL_ZYGOTE_COPY_MNT_NS\n#define CL_ZYGOTE_COPY_MNT_NS 0x40\n#endif' fs/namespace.c
+          fi
+
+          if [ -f "include/linux/mount.h" ]; then
+            echo -e "\n#ifndef CL_COPY_MNT_NS\n#define CL_COPY_MNT_NS 0x20\n#endif\n#ifndef CL_ZYGOTE_COPY_MNT_NS\n#define CL_ZYGOTE_COPY_MNT_NS 0x40\n#endif" >> include/linux/mount.h
           fi
 
           # تجاوز وتفريغ سكريبتات الفحص
