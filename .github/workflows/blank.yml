@@ -110,12 +110,13 @@ jobs:
           u32 susfs_get_enabled_features(void);
           int susfs_show_variant(char *buf);
           int susfs_show_version(char *buf);
+          int susfs_set_avc_log_spoofing(void *arg);
           extern unsigned long susfs_extra_works;
 
           #endif
           EOF
 
-          # 2. إنشاء ملف C لحل جميع الرموز المفقودة واستكمال المراجع المعطلة
+          # 2. إنشاء ملف C لحل جميع الرموز المفقودة
           mkdir -p drivers/kernelsu
           cat << 'EOF' > drivers/kernelsu/susfs_stubs.c
           #include <linux/types.h>
@@ -131,6 +132,7 @@ jobs:
           u32 susfs_get_enabled_features(void) { return 0; }
           int susfs_show_variant(char *buf) { return 0; }
           int susfs_show_version(char *buf) { return 0; }
+          int susfs_set_avc_log_spoofing(void *arg) { return 0; }
 
           int susfs_add_sus_path(void *arg) { return 0; }
           int susfs_add_sus_mount(void *arg) { return 0; }
@@ -138,7 +140,7 @@ jobs:
           int susfs_add_try_umount(void *arg) { return 0; }
           int susfs_set_unshare(void *arg) { return 0; }
 
-          void __attribute__((weak)) ksu_init_rc_hook(void) {}
+          void ksu_init_rc_hook(void) {}
 
           long strncpy_from_user_nofault(char *dst, const char __user *unsafe_addr, long count) {
               return strncpy_from_user(dst, unsafe_addr, count);
@@ -244,7 +246,7 @@ jobs:
                   with open(ksud_path, "w") as f:
                       f.write(ksud_c)
 
-          # 6. تحديث ksu.c
+          # 6. تحديث ksu.c وتضمين susfs_stubs.c
           ksu_c_path = "drivers/kernelsu/ksu.c"
           if os.path.exists(ksu_c_path):
               with open(ksu_c_path, "r") as f:
@@ -259,6 +261,9 @@ jobs:
                           if rel_path not in ksu_c_content and fname not in ksu_c_content:
                               ksu_c_content += f'\n#include "{rel_path}"\n'
               
+              if '#include "susfs_stubs.c"' not in ksu_c_content:
+                  ksu_c_content += '\n#include "susfs_stubs.c"\n'
+
               with open(ksu_c_path, "w") as f:
                   f.write(ksu_c_content)
 
@@ -294,7 +299,7 @@ jobs:
 
               mk_content = f"""
           obj-y += kernelsu.o
-          kernelsu-objs := ksu.o
+          kernelsu-objs := ksu.o susfs_stubs.o
           {kpm_line}ccflags-y += -DLINUX_VERSION_CODE=267333 -DKSU_VERSION=16 -DKSU_VERSION_FULL=\\"1.0.0\\" -DKSU_VERSION_CODE=10000 -DKSU_VERSION_NAME=\\"1.0.0\\" -I$(srctree)/$(src) -I$(srctree)/$(src)/include -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include {inc_flags} -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KPM=1 -DCONFIG_KSU_SUSFS=0
           """
               with open(mk_path, "w") as f:
