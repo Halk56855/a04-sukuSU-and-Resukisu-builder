@@ -155,11 +155,22 @@ jobs:
                   with open(target_c, "w") as f:
                       f.write(c_code)
 
-          # حقن weak stubs لكافة دالّات SUSFS لمنع أخطاء الربط (Linker Errors)
+          # التأكد من وجود fs/susfs.c وحقن الرموز والدوال الناقصة لمنع أخطاء vmlinux linking
           susfs_c_path = "fs/susfs.c"
-          if os.path.exists(susfs_c_path):
-              weak_stubs = """
+          if not os.path.exists(susfs_c_path):
+              with open(susfs_c_path, "w") as f:
+                  f.write("// Fake susfs.c file\n#include <linux/types.h>\n")
+
+          weak_stubs = """
           #include <linux/types.h>
+          #include <linux/workqueue.h>
+
+          /* تعريف رمز susfs_extra_works الناقص لمنع أخطاء الـ Linker */
+          struct workqueue_struct *susfs_extra_works __attribute__((weak)) = NULL;
+
+          /* تعريف دوال SUSFS الناقصة */
+          __attribute__((weak)) void susfs_set_current_proc_umounted(bool a) {}
+          __attribute__((weak)) bool susfs_is_current_proc_umounted(void) { return false; }
           __attribute__((weak)) int susfs_add_sus_path_loop(void *a, void *b) { return 0; }
           __attribute__((weak)) void susfs_show_version(void) {}
           __attribute__((weak)) void susfs_get_enabled_features(void *a) {}
@@ -169,10 +180,9 @@ jobs:
           __attribute__((weak)) int susfs_set_avc_log_spoofing(bool a) { return 0; }
           __attribute__((weak)) int susfs_enable_log(bool a) { return 0; }
           __attribute__((weak)) void susfs_start_sdcard_monitor_fn(void) {}
-          __attribute__((weak)) bool susfs_is_current_proc_umounted(void) { return false; }
           """
-              with open(susfs_c_path, "a") as f:
-                  f.write(weak_stubs)
+          with open(susfs_c_path, "a") as f:
+              f.write(weak_stubs)
 
           # 1. حقن ksu_handle_execveat في fs/exec.c
           exec_path = "fs/exec.c"
