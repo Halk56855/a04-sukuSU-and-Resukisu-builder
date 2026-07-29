@@ -82,11 +82,14 @@ jobs:
             fi
           fi
 
-          # 2. حقن التعريفات الهيكلية للـ mount و SUSFS في fs/namespace.c
+          # 2. حقن التعريفات الهيكلية لـ IDA و mount و SUSFS في fs/namespace.c
           if [ -f "fs/namespace.c" ]; then
             sed -i '1i#include <linux/susfs.h>' fs/namespace.c
             sed -i '1i#ifndef CL_COPY_MNT_NS\n#define CL_COPY_MNT_NS 0x20\n#endif' fs/namespace.c
             sed -i '1i#ifndef CL_ZYGOTE_COPY_MNT_NS\n#define CL_ZYGOTE_COPY_MNT_NS 0x40\n#endif' fs/namespace.c
+            if ! grep -q "DEFINE_IDA(susfs_mnt_id_ida)" fs/namespace.c; then
+              sed -i '1i#include <linux/idr.h>\nDEFINE_IDA(susfs_mnt_id_ida);\nDEFINE_IDA(susfs_mnt_group_ida);' fs/namespace.c
+            fi
           fi
 
           if [ -f "include/linux/mount.h" ]; then
