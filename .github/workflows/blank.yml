@@ -200,14 +200,16 @@ jobs:
                               with open(filepath, "w") as f:
                                   f.write(new_kc)
 
-          # 4. تعديل selinux و rules
+          # 4. تعديل selinux و rules المحدّد والدقيق
           for root, dirs, files in os.walk("drivers/kernelsu"):
               for fname in files:
                   filepath = os.path.join(root, fname)
                   if fname == "selinux.c":
                       with open(filepath, "r") as f:
                           c = f.read()
-                      c = c.replace("selinux_enforcing", "selinux_state.enforcing")
+                      # إصلاح أي استبدال خاطئ سابق وإصلاح المتغير بحذر بدون المساس بالدوال
+                      c = c.replace("__is_selinux_state.enforcing()", "selinux_state.enforcing")
+                      c = re.sub(r"(?<![a-zA-Z0-9_])selinux_enforcing(?![a-zA-Z0-9_(\w])", "selinux_state.enforcing", c)
                       with open(filepath, "w") as f:
                           f.write(c)
                   elif fname == "rules.c":
