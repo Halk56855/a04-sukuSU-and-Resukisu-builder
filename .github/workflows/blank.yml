@@ -46,19 +46,41 @@ jobs:
           # دمج SukiSU-Ultra بصيغة builtin
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
 
-          # 1. حل مشكلة susfs.h و susfs_def.h المفقودين
+          # 1. إنشاء ملفات الترويسة لـ SUSFS مع كافة التعريفات اللازمة
           mkdir -p include/linux
-          cat << 'EOF' > include/linux/susfs.h
-          #ifndef _LINUX_SUSFS_H
-          #define _LINUX_SUSFS_H
-          #include <linux/types.h>
-          #endif
-          EOF
-
           cat << 'EOF' > include/linux/susfs_def.h
           #ifndef _LINUX_SUSFS_DEF_H
           #define _LINUX_SUSFS_DEF_H
+
           #include <linux/types.h>
+
+          #define CMD_SUSFS_ADD_SUS_PATH 0x55555
+          #define CMD_SUSFS_ADD_SUS_MOUNT 0x55556
+          #define CMD_SUSFS_ADD_SUS_KSTAT 0x55557
+          #define CMD_SUSFS_ADD_SUS_KSTAT_STATIC 0x55558
+          #define CMD_SUSFS_ADD_TRY_UMOUNT 0x55559
+          #define CMD_SUSFS_SET_UNSHARE 0x5555a
+          #define CMD_SUSFS_ADD_OPEN_REDIRECT 0x5555b
+          #define CMD_SUSFS_ADD_SUS_MAP 0x5555c
+          #define CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING 0x5555d
+          #define CMD_SUSFS_SHOW_ENABLED_FEATURES 0x5555e
+          #define CMD_SUSFS_SHOW_VARIANT 0x5555f
+          #define CMD_SUSFS_SHOW_VERSION 0x55560
+          #define CMD_SUSFS_HIDE_KSU_SUSFS 0x55561
+          #define CMD_SUSFS_ADD_SUS_KSTAT_LOOP 0x55562
+
+          #endif
+          EOF
+
+          cat << 'EOF' > include/linux/susfs.h
+          #ifndef _LINUX_SUSFS_H
+          #define _LINUX_SUSFS_H
+
+          #include <linux/types.h>
+          #include <linux/susfs_def.h>
+
+          static inline void susfs_init(void) {}
+
           #endif
           EOF
 
@@ -189,7 +211,6 @@ jobs:
           '
 
           find drivers/kernelsu/ KernelSU/ -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null -exec sed -i 's@\bfallthrough;@/* fallthrough */;@g' {} + || true
-          find drivers/kernelsu/ KernelSU/ -name "event.c" 2>/dev/null -exec sed -i 's/#define USER_ARG_NULL user_arg_null_ptr()/#define USER_ARG_NULL (*user_arg_null_ptr())/g' {} + || true
 
           # 5. إصلاح مسارات تضمين ميديا تك
           find drivers/misc/mediatek/dbgtop/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <dbgtop.h>@#include "dbgtop.h"@g' {} + 2>/dev/null || true
