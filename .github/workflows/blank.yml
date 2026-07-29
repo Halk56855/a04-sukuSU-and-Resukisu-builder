@@ -58,7 +58,7 @@ jobs:
             echo -e "\n#ifndef fallthrough\n#define fallthrough do {} while (0)\n#endif" >> include/linux/compiler.h
           fi
 
-          # إنشاء ملفات الترويسة الشاملة مع Inline Stubs المباشرة
+          # إنشاء ملفات الترويسة مع ضبط نوع susfs_extra_works الصحيح
           mkdir -p include/linux
           cat << 'EOF' > include/linux/susfs_def.h
           #ifndef _LINUX_SUSFS_DEF_H
@@ -97,6 +97,7 @@ jobs:
           #define _LINUX_SUSFS_H
 
           #include <linux/types.h>
+          #include <linux/workqueue.h>
           #include <linux/susfs_def.h>
 
           static inline void susfs_init(void) {}
@@ -119,7 +120,7 @@ jobs:
 
           static inline void ksu_init_rc_hook(void) {}
 
-          static unsigned long __maybe_unused susfs_extra_works = 0;
+          extern struct work_struct susfs_extra_works;
 
           #endif
           EOF
@@ -207,13 +208,13 @@ jobs:
                       with open(filepath, "w") as f:
                           f.write(c)
 
-          # 5. تعديل ksud.c
+          # 5. تعديل ksud.c وحقن تعريف susfs_extra_works الوهمي
           for root, dirs, files in os.walk("."):
               if "ksud.c" in files:
                   ksud_path = os.path.join(root, "ksud.c")
                   with open(ksud_path, "r") as f:
                       ksud_c = f.read()
-                  stubs = "\n#include <linux/compiler.h>\nvoid __attribute__((weak)) ksu_selinux_hide_handle_second_stage(void) {}\nvoid __attribute__((weak)) ksu_selinux_hide_handle_post_fs_data(void) {}\n"
+                  stubs = "\n#include <linux/compiler.h>\n#include <linux/workqueue.h>\nstruct work_struct __attribute__((weak)) susfs_extra_works;\nvoid __attribute__((weak)) ksu_selinux_hide_handle_second_stage(void) {}\nvoid __attribute__((weak)) ksu_selinux_hide_handle_post_fs_data(void) {}\n"
                   if "weak" not in ksud_c or "ksu_selinux_hide_handle_second_stage" not in ksud_c:
                       ksud_c = stubs + "\n" + ksud_c
                       with open(ksud_path, "w") as f:
@@ -277,7 +278,6 @@ jobs:
 
           export LOCALVERSION="-ReSukiSU"
 
-          # التضمين القسري (-include) يحقن susfs.h في السطر الأول لكل ملف .c أثناء التجميع
           EXTRA_FLAGS="-w -O2 -include $(pwd)/include/linux/susfs.h -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KPM=1 -DCONFIG_KSU_SUSFS=0 -I$(pwd) -I. \
           -I$(pwd)/security/selinux \
           -I$(pwd)/security/selinux/include \
