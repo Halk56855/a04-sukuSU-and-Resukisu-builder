@@ -54,6 +54,9 @@ jobs:
           cp susfs_src/kernel_patches/include/linux/susfs_def.h include/linux/ 2>/dev/null || true
           cp susfs_src/kernel_patches/fs/susfs.c fs/ 2>/dev/null || true
 
+          # تفادي تحذير seccomp_types.h
+          touch include/linux/seccomp_types.h 2>/dev/null || true
+
           # إضافة susfs.o إلى fs/Makefile إذا لم يكن موجوداً
           if ! grep -q "susfs.o" fs/Makefile; then
             echo "obj-\$(CONFIG_KSU_SUSFS) += susfs.o" >> fs/Makefile
@@ -120,8 +123,11 @@ jobs:
           import os
           import re
 
-          # 0. إضافة تعريفات CMD_SUSFS الناقصة تلقائياً في susfs.h و susfs_def.h و dispatch.c
-          susfs_cmd_defs = """
+          # 0. إضافة تعريفات CMD_SUSFS و SUSFS_MAGIC الناقصة تلقائياً
+          susfs_extra_defs = """
+          #ifndef SUSFS_MAGIC
+          #define SUSFS_MAGIC 0x5550
+          #endif
           #ifndef CMD_SUSFS_ADD_SUS_PATH_LOOP
           #define CMD_SUSFS_ADD_SUS_PATH_LOOP 0x55501
           #endif
@@ -139,16 +145,16 @@ jobs:
           for h_file in ["include/linux/susfs.h", "include/linux/susfs_def.h"]:
               if os.path.exists(h_file):
                   with open(h_file, "a") as f:
-                      f.write(susfs_cmd_defs)
+                      f.write(susfs_extra_defs)
 
-          dispatch_path = "drivers/kernelsu/supercall/dispatch.c"
-          if os.path.exists(dispatch_path):
-              with open(dispatch_path, "r") as f:
-                  d_code = f.read()
-              if "CMD_SUSFS_ADD_SUS_PATH_LOOP" not in d_code or "#include <linux/susfs.h>" not in d_code:
-                  d_code = "#include <linux/types.h>\n#include <linux/susfs.h>\n#include <linux/susfs_def.h>\n" + susfs_cmd_defs + d_code
-                  with open(dispatch_path, "w") as f:
-                      f.write(d_code)
+          # حقن الترويسات والتعريفات في supercall.c و dispatch.c
+          for target_c in ["drivers/kernelsu/supercall/supercall.c", "drivers/kernelsu/supercall/dispatch.c"]:
+              if os.path.exists(target_c):
+                  with open(target_c, "r") as f:
+                      c_code = f.read()
+                  c_code = "#include <linux/types.h>\n#include <linux/susfs.h>\n#include <linux/susfs_def.h>\n" + susfs_extra_defs + c_code
+                  with open(target_c, "w") as f:
+                      f.write(c_code)
 
           # 1. حقن ksu_handle_execveat في fs/exec.c
           exec_path = "fs/exec.c"
