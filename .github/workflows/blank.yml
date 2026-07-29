@@ -51,7 +51,7 @@ jobs:
           sed -i 's/$(error/# $(error/g' drivers/kernelsu/Kbuild 2>/dev/null || true
           sed -i 's/$(error/# $(error/g' KernelSU/Kbuild 2>/dev/null || true
 
-          # 1. إنشاء ملفات الترويسة للتعريفات بدون stdbool.h الخاطئة
+          # 1. إنشاء ملفات الترويسة للتعريفات
           mkdir -p include/linux
           cat << 'EOF' > include/linux/susfs_def.h
           #ifndef _LINUX_SUSFS_DEF_H
@@ -280,7 +280,7 @@ jobs:
               mk_content = f"""
           obj-y += kernelsu.o
           kernelsu-objs := ksu.o
-          {kpm_line}ccflags-y += -DLINUX_VERSION_CODE=267333 -DKSU_VERSION=16 -DKSU_VERSION_FULL=\\"1.0.0\\" -DKSU_VERSION_CODE=10000 -DKSU_VERSION_NAME=\\"1.0.0\\" -I$(srctree)/$(src) -I$(srctree)/$(src)/include -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include {inc_flags} -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KPM=1 -DCONFIG_KSU_SUSFS=0
+          {kpm_line}ccflags-y += -DLINUX_VERSION_CODE=267333 -DKSU_VERSION=16 -DKSU_VERSION_FULL=\\"1.0.0\\" -DKSU_VERSION_CODE=10000 -DKSU_VERSION_NAME=\\"1.0.0\\" -I$(srctree)/$(src) -I$(srctree)/$(src)/include -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include {inc_flags} -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KPM=1 -DCONFIG_KSU_SUSFS=0 '-Dfallthrough=do {{}} while (0)'
           """
               with open(mk_path, "w") as f:
                   f.write(mk_content.strip() + "\n")
@@ -288,8 +288,6 @@ jobs:
 
           # تشغيل سكريبت Python
           python3 patch_ksu.py
-
-          find drivers/kernelsu/ KernelSU/ -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null -exec sed -i 's@\bfallthrough;@/* fallthrough */;@g' {} + || true
 
           # 6. إصلاح مسارات تضمين ميديا تك
           find drivers/misc/mediatek/dbgtop/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <dbgtop.h>@#include "dbgtop.h"@g' {} + 2>/dev/null || true
@@ -346,7 +344,7 @@ jobs:
 
           export LOCALVERSION="-ReSukiSU"
 
-          EXTRA_FLAGS="-w -O2 -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KPM=1 -DCONFIG_KSU_SUSFS=0 -I$(pwd) -I. \
+          EXTRA_FLAGS="-w -O2 '-Dfallthrough=do {} while (0)' -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KPM=1 -DCONFIG_KSU_SUSFS=0 -I$(pwd) -I. \
           -I$(pwd)/security/selinux \
           -I$(pwd)/security/selinux/include \
           -I$(pwd)/drivers/staging/android/mtk_ion \
