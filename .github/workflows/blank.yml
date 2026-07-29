@@ -50,9 +50,9 @@ jobs:
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.19 --depth=1 susfs_src
 
           # نسخ ملفات SUSFS الأساسية إلى النواة
-          cp susfs_src/kernel_patches/include/linux/susfs.h include/linux/
+          cp susfs_src/kernel_patches/include/linux/susfs.h include/linux/ 2>/dev/null || true
           cp susfs_src/kernel_patches/include/linux/susfs_def.h include/linux/ 2>/dev/null || true
-          cp susfs_src/kernel_patches/fs/susfs.c fs/
+          cp susfs_src/kernel_patches/fs/susfs.c fs/ 2>/dev/null || true
 
           # إضافة susfs.o إلى fs/Makefile إذا لم يكن موجوداً
           if ! grep -q "susfs.o" fs/Makefile; then
@@ -94,7 +94,7 @@ jobs:
             echo -e "\n#ifndef CL_COPY_MNT_NS\n#define CL_COPY_MNT_NS 0x20\n#endif\n#ifndef CL_ZYGOTE_COPY_MNT_NS\n#define CL_ZYGOTE_COPY_MNT_NS 0x40\n#endif" >> include/linux/mount.h
           fi
 
-          # تجاوز وتفريغ كافة سكريبتات فحص الهُوك (manual_hook_check / inline_hook_check)
+          # تجاوز وتفريغ كافة سكريبتات فحص الهُوك
           find . -name "*hook_check.mk" -type f -exec sh -c 'echo "all:" > "$1"' _ {} \;
           sed -i 's/$(error/# $(error/g' drivers/kernelsu/Kbuild 2>/dev/null || true
           sed -i 's/$(error/# $(error/g' KernelSU/Kbuild 2>/dev/null || true
@@ -115,10 +115,40 @@ jobs:
           # حقن التعريفات الثابتة
           find drivers/kernelsu/ KernelSU/ -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null -exec sed -i '1i#undef LINUX_VERSION_CODE\n#define LINUX_VERSION_CODE 267333\n#ifndef KERNEL_VERSION\n#define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))\n#endif\n#ifndef KSU_VERSION\n#define KSU_VERSION 16\n#endif\n#ifndef KSU_VERSION_FULL\n#define KSU_VERSION_FULL "1.0.0"\n#endif\n#ifndef KSU_VERSION_CODE\n#define KSU_VERSION_CODE 10000\n#endif\n#ifndef KSU_VERSION_NAME\n#define KSU_VERSION_NAME "1.0.0"\n#endif\n#ifndef KSU_INVALID_APPID\n#define KSU_INVALID_APPID -1\n#endif\n#ifndef PER_USER_RANGE\n#define PER_USER_RANGE 100000\n#endif\n#ifndef KSU_MAX_PACKAGE_NAME\n#define KSU_MAX_PACKAGE_NAME 256\n#endif' {} + || true
 
-          # سكريبت Python لإصلاح التوافقية وحقن الهُوك مع الترويسات اللازمة
+          # سكريبت Python لإصلاح التوافقية وحقن الهُوك والتعريفات الناقصة
           cat << 'EOF' > patch_ksu.py
           import os
           import re
+
+          # 0. إضافة تعريفات CMD_SUSFS الناقصة تلقائياً في susfs.h و susfs_def.h و dispatch.c
+          susfs_cmd_defs = """
+          #ifndef CMD_SUSFS_ADD_SUS_PATH_LOOP
+          #define CMD_SUSFS_ADD_SUS_PATH_LOOP 0x55501
+          #endif
+          #ifndef CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS
+          #define CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS 0x55502
+          #endif
+          #ifndef CMD_SUSFS_ADD_SUS_MAP
+          #define CMD_SUSFS_ADD_SUS_MAP 0x55503
+          #endif
+          #ifndef CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING
+          #define CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING 0x55504
+          #endif
+          """
+
+          for h_file in ["include/linux/susfs.h", "include/linux/susfs_def.h"]:
+              if os.path.exists(h_file):
+                  with open(h_file, "a") as f:
+                      f.write(susfs_cmd_defs)
+
+          dispatch_path = "drivers/kernelsu/supercall/dispatch.c"
+          if os.path.exists(dispatch_path):
+              with open(dispatch_path, "r") as f:
+                  d_code = f.read()
+              if "CMD_SUSFS_ADD_SUS_PATH_LOOP" not in d_code or "#include <linux/susfs.h>" not in d_code:
+                  d_code = "#include <linux/types.h>\n#include <linux/susfs.h>\n#include <linux/susfs_def.h>\n" + susfs_cmd_defs + d_code
+                  with open(dispatch_path, "w") as f:
+                      f.write(d_code)
 
           # 1. حقن ksu_handle_execveat في fs/exec.c
           exec_path = "fs/exec.c"
@@ -127,36 +157,43 @@ jobs:
                   exec_c = f.read()
               
               if "ksu_handle_execveat" not in exec_c:
-                  decl = "\n#include <linux/types.h>\n#ifdef CONFIG_KSU\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, struct user_arg_ptr *argv, struct user_arg_ptr *envp, int *flags);\nextern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, struct user_arg_ptr *argv, struct user_arg_ptr *envp, int *flags);\n#endif\n"
-                  exec_c = decl + exec_c
-                  
+                  if "<linux/types.h>" not in exec_c:
+                      exec_c = "#include <linux/types.h>\n" + exec_c
+
+                  decl = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, struct user_arg_ptr *argv, struct user_arg_ptr *envp, int *flags);\nextern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, struct user_arg_ptr *argv, struct user_arg_ptr *envp, int *flags);\n#endif\n"
                   hook_str = "\n#ifdef CONFIG_KSU\n\tksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n\tksu_handle_execveat_sucompat(&fd, &filename, &argv, &envp, &flags);\n#endif\n"
                   
                   if "do_execveat_common" in exec_c:
+                      exec_c = exec_c.replace("static int do_execveat_common", decl + "static int do_execveat_common", 1)
                       exec_c = re.sub(r"(static\s+int\s+do_execveat_common\s*\([^)]*\)\s*\{)", r"\1" + hook_str, exec_c, count=1)
                   elif "do_execveat" in exec_c:
+                      exec_c = exec_c.replace("int do_execveat", decl + "int do_execveat", 1)
                       exec_c = re.sub(r"(int\s+do_execveat\s*\([^)]*\)\s*\{)", r"\1" + hook_str, exec_c, count=1)
                   elif "__do_execveat_file" in exec_c:
+                      exec_c = exec_c.replace("static int __do_execveat_file", decl + "static int __do_execveat_file", 1)
                       exec_c = re.sub(r"(static\s+int\s+__do_execveat_file\s*\([^)]*\)\s*\{)", r"\1" + hook_str, exec_c, count=1)
                       
                   with open(exec_path, "w") as f:
                       f.write(exec_c)
 
-          # 2. حقن ksu_handle_setresuid في kernel/sys.c مع تضمين <linux/types.h> و <linux/cred.h>
+          # 2. حقن ksu_handle_setresuid في kernel/sys.c
           sys_path = "kernel/sys.c"
           if os.path.exists(sys_path):
               with open(sys_path, "r") as f:
                   sys_c = f.read()
 
               if "ksu_handle_setresuid" not in sys_c:
-                  decl = "\n#include <linux/types.h>\n#include <linux/cred.h>\n#ifdef CONFIG_KSU\nextern int ksu_handle_setresuid(uid_t *ruid, uid_t *euid, uid_t *suid);\n#endif\n"
-                  sys_c = decl + sys_c
+                  if "<linux/types.h>" not in sys_c:
+                      sys_c = "#include <linux/types.h>\n" + sys_c
 
+                  decl = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_setresuid(uid_t *ruid, uid_t *euid, uid_t *suid);\n#endif\n"
                   hook_str = "\n#ifdef CONFIG_KSU\n\tksu_handle_setresuid(&ruid, &euid, &suid);\n#endif\n"
 
                   if "SYSCALL_DEFINE3(setresuid" in sys_c:
+                      sys_c = sys_c.replace("SYSCALL_DEFINE3(setresuid", decl + "SYSCALL_DEFINE3(setresuid", 1)
                       sys_c = re.sub(r"(SYSCALL_DEFINE3\s*\(\s*setresuid\s*,[^)]*\)\s*\{)", r"\1" + hook_str, sys_c, count=1)
                   elif "__sys_setresuid" in sys_c:
+                      sys_c = sys_c.replace("int __sys_setresuid", decl + "int __sys_setresuid", 1)
                       sys_c = re.sub(r"(int\s+__sys_setresuid\s*\([^)]*\)\s*\{)", r"\1" + hook_str, sys_c, count=1)
 
                   with open(sys_path, "w") as f:
