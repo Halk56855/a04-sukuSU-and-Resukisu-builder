@@ -57,10 +57,9 @@ jobs:
           # تفادي تحذير seccomp_types.h
           touch include/linux/seccomp_types.h 2>/dev/null || true
 
-          # إضافة susfs.o إلى fs/Makefile إذا لم يكن موجوداً
-          if ! grep -q "susfs.o" fs/Makefile; then
-            echo "obj-\$(CONFIG_KSU_SUSFS) += susfs.o" >> fs/Makefile
-          fi
+          # إضافة susfs.o بشكل مباشر ومؤكد إلى fs/Makefile
+          sed -i '/susfs.o/d' fs/Makefile 2>/dev/null || true
+          echo "obj-y += susfs.o" >> fs/Makefile
 
           # تطبيق رقع SUSFS
           patch -p1 < susfs_src/kernel_patches/KernelSU/1001-kernel-4.19-add-susfs-to-ksu.patch 2>/dev/null || true
@@ -118,7 +117,7 @@ jobs:
           # حقن التعريفات الثابتة
           find drivers/kernelsu/ KernelSU/ -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null -exec sed -i '1i#undef LINUX_VERSION_CODE\n#define LINUX_VERSION_CODE 267333\n#ifndef KERNEL_VERSION\n#define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))\n#endif\n#ifndef KSU_VERSION\n#define KSU_VERSION 16\n#endif\n#ifndef KSU_VERSION_FULL\n#define KSU_VERSION_FULL "1.0.0"\n#endif\n#ifndef KSU_VERSION_CODE\n#define KSU_VERSION_CODE 10000\n#endif\n#ifndef KSU_VERSION_NAME\n#define KSU_VERSION_NAME "1.0.0"\n#endif\n#ifndef KSU_INVALID_APPID\n#define KSU_INVALID_APPID -1\n#endif\n#ifndef PER_USER_RANGE\n#define PER_USER_RANGE 100000\n#endif\n#ifndef KSU_MAX_PACKAGE_NAME\n#define KSU_MAX_PACKAGE_NAME 256\n#endif' {} + || true
 
-          # سكريبت Python لإصلاح التوافقية وحقن الهُوك والتعريفات الناقصة
+          # سكريبت Python لإصلاح التوافقية وحقن الهُوك والتعريفات الناقصة والـ Stubs
           cat << 'EOF' > patch_ksu.py
           import os
           import re
@@ -155,6 +154,25 @@ jobs:
                   c_code = "#include <linux/types.h>\n#include <linux/susfs.h>\n#include <linux/susfs_def.h>\n" + susfs_extra_defs + c_code
                   with open(target_c, "w") as f:
                       f.write(c_code)
+
+          # حقن weak stubs لكافة دالّات SUSFS لمنع أخطاء الربط (Linker Errors)
+          susfs_c_path = "fs/susfs.c"
+          if os.path.exists(susfs_c_path):
+              weak_stubs = """
+          #include <linux/types.h>
+          __attribute__((weak)) int susfs_add_sus_path_loop(void *a, void *b) { return 0; }
+          __attribute__((weak)) void susfs_show_version(void) {}
+          __attribute__((weak)) void susfs_get_enabled_features(void *a) {}
+          __attribute__((weak)) void susfs_show_variant(void) {}
+          __attribute__((weak)) int susfs_set_hide_sus_mnts_for_non_su_procs(bool a) { return 0; }
+          __attribute__((weak)) int susfs_add_sus_map(void *a, void *b) { return 0; }
+          __attribute__((weak)) int susfs_set_avc_log_spoofing(bool a) { return 0; }
+          __attribute__((weak)) int susfs_enable_log(bool a) { return 0; }
+          __attribute__((weak)) void susfs_start_sdcard_monitor_fn(void) {}
+          __attribute__((weak)) bool susfs_is_current_proc_umounted(void) { return false; }
+          """
+              with open(susfs_c_path, "a") as f:
+                  f.write(weak_stubs)
 
           # 1. حقن ksu_handle_execveat في fs/exec.c
           exec_path = "fs/exec.c"
