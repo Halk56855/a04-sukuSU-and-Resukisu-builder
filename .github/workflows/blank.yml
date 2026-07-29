@@ -1,4 +1,4 @@
-Name: Build Samsung A04 Kernel with SukiSU-Ultra (Stable & Boot Fix)
+name: Build Samsung A04 Kernel with SukiSU-Ultra (Stable & Boot Fix)
 
 on:
   workflow_dispatch:
