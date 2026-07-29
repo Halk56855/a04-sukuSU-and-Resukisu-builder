@@ -14,7 +14,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev git clang gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi curl cpio python3
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev git clang gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi curl cpio python3 zip
 
       - name: Download and Extract Kernel Source
         run: |
@@ -332,8 +332,23 @@ jobs:
           make a04_defconfig
           make -j$(nproc) KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++ || make -j1 KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++
 
-      - name: Upload Kernel Output
+      - name: Package Kernel into AnyKernel3
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3 --depth=1 AnyKernel3
+          cp arch/arm64/boot/Image AnyKernel3/
+          
+          # ضبط إعدادات anykernel.sh للجهاز (تحديد البارتشن للـ boot)
+          cd AnyKernel3
+          sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
+          sed -i 's/block=auto/block=\/dev\/block\/by-name\/boot/g' anykernel.sh
+          sed -i 's/is_slot_device=0/is_slot_device=auto/g' anykernel.sh
+          
+          # ضغط الملفات في حزمة zip جاهزة للتفليش
+          zip -r9 "../AnyKernel3-Samsung-A04-SukiSU.zip" * -x .git README.md *placeholder
+          cd ..
+
+      - name: Upload AnyKernel3 Package Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: A04-SukiSU-Kernel-Image
-          path: arch/arm64/boot/Image*
+          name: AnyKernel3-Samsung-A04-SukiSU
+          path: AnyKernel3-Samsung-A04-SukiSU.zip
