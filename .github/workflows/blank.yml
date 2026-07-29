@@ -236,7 +236,7 @@ jobs:
               kpm_path = os.path.join(ksu_dir, "kpm")
               kpm_line = ""
               if os.path.isdir(kpm_path):
-                  kpm_c_files = [f.replace(".c", ".o") for f in os.listdir(kpm_path) if f.endswith(".c")]
+                  kpm_c_files = [item.replace(".c", ".o") for item in os.listdir(kpm_path) if item.endswith(".c")]
                   kpm_mk = os.path.join(kpm_path, "Makefile")
                   with open(kpm_mk, "w") as km:
                       if kpm_c_files:
@@ -291,7 +291,7 @@ jobs:
           echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/a04_defconfig
           echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/a04_defconfig
 
-          # تعطيل IKHEADERS לחل خطأ /tools/build/cpio
+          # تعطيل IKHEADERS لحل خطأ /tools/build/cpio
           sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' arch/arm64/configs/a04_defconfig
           echo "CONFIG_IKHEADERS=n" >> arch/arm64/configs/a04_defconfig
 
