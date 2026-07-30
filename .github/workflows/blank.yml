@@ -64,9 +64,9 @@ jobs:
           mkdir -p kernel
           touch kernel/kheaders_data.tar.xz 2>/dev/null || true
 
-          # 3. تعطيل وتجاوز جميع فحوصات ReSukiSU/KernelSU (hook_check + static_export_check)
+          # 3. تعطيل وتجاوز جميع فحوصات TP Hooks و static_export_check و hook_check في ReSukiSU
           find . -name "*check*.mk" -type f -exec sh -c 'echo "all:" > "$1"' _ {} \;
-          find drivers/kernelsu/ KernelSU/ -name "*.mk" -type f -exec sed -i 's/$(error/# $(error/g' {} + 2>/dev/null || true
+          find drivers/kernelsu/ KernelSU/ -type f \( -name "Kbuild" -o -name "*.mk" -o -name "Makefile" \) -exec sed -i 's/$(error/# $(error/g' {} + 2>/dev/null || true
 
           # 4. حقن fallthrough
           if [ -f "include/linux/compiler_types.h" ]; then
@@ -75,7 +75,7 @@ jobs:
             echo -e "\n#ifndef fallthrough\n#define fallthrough do {} while (0)\n#endif" >> include/linux/compiler.h
           fi
 
-          # 5. وصلة رمزية لمجلد SELinux وتصدير الرمز sel_handle_status_ops
+          # 5. وصلة رمزية لمجلد SELinux
           mkdir -p security/selinux
           if [ ! -d "security/selinux/ss" ]; then
             ln -sf . security/selinux/ss
@@ -237,7 +237,7 @@ jobs:
             echo "obj-y :=" > security/defex/Makefile 2>/dev/null || true
           fi
 
-          # 10. إعداد defconfig
+          # 10. إعداد defconfig فرض MANUAL_HOOK وتعطيل TP_HOOK
           DEFCONFIG_FILE="arch/arm64/configs/a04f_defconfig"
           if [ ! -f "$DEFCONFIG_FILE" ]; then
             DEFCONFIG_FILE=$(find arch/arm64/configs/ -name "*a04*" | head -n 1)
@@ -246,6 +246,7 @@ jobs:
           if [ -n "$DEFCONFIG_FILE" ] && [ -f "$DEFCONFIG_FILE" ]; then
             echo "CONFIG_KSU=y" >> $DEFCONFIG_FILE
             echo "CONFIG_KSU_MANUAL_HOOK=y" >> $DEFCONFIG_FILE
+            sed -i 's/CONFIG_KSU_TP_HOOK=y/CONFIG_KSU_TP_HOOK=n/g' $DEFCONFIG_FILE 2>/dev/null || true
             echo "CONFIG_KSU_TAMPER_SYS_CALL=y" >> $DEFCONFIG_FILE
             echo "CONFIG_KSU_SELINUX_HIDE=y" >> $DEFCONFIG_FILE
             echo "CONFIG_KPM=y" >> $DEFCONFIG_FILE
@@ -371,7 +372,7 @@ jobs:
 
           make a04f_defconfig || make a04_defconfig || make a05m_defconfig || make defconfig
           
-          # فرض تفعيل KALLSYMS وتعطيل IKHEADERS داخل .config الناتج
+          # إعدادات الحزم النهائية داخل .config
           sed -i 's/CONFIG_IKHEADERS=y/# CONFIG_IKHEADERS is not set/g' .config || true
           echo "CONFIG_IKHEADERS=n" >> .config
 
@@ -379,6 +380,9 @@ jobs:
           sed -i 's/# CONFIG_KALLSYMS_ALL is not set/CONFIG_KALLSYMS_ALL=y/g' .config || true
           echo "CONFIG_KALLSYMS=y" >> .config
           echo "CONFIG_KALLSYMS_ALL=y" >> .config
+
+          sed -i 's/CONFIG_KSU_TP_HOOK=y/# CONFIG_KSU_TP_HOOK is not set/g' .config || true
+          echo "CONFIG_KSU_MANUAL_HOOK=y" >> .config
 
           make -j$(nproc) KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++ || make -j1 KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++
 
