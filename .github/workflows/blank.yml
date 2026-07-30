@@ -104,7 +104,18 @@ jobs:
                       except Exception:
                           pass
 
-          # 2. Restore fair.c to use perf_order_domains and clean stubs
+          # 2. Fix MediaTek FTrace include path in mtk_ftrace.h
+          mtk_ftrace_path = "kernel/trace/mtk_ftrace.h"
+          if os.path.exists(mtk_ftrace_path):
+              with open(mtk_ftrace_path, "r", encoding="utf-8", errors="ignore") as f:
+                  ftrace_code = f.read()
+              if '#define TRACE_INCLUDE_PATH .' in ftrace_code:
+                  ftrace_code = ftrace_code.replace('#define TRACE_INCLUDE_PATH .', '#define TRACE_INCLUDE_PATH kernel/trace')
+                  with open(mtk_ftrace_path, "w", encoding="utf-8") as f:
+                      f.write(ftrace_code)
+                  print("Patched TRACE_INCLUDE_PATH in kernel/trace/mtk_ftrace.h")
+
+          # 3. Restore fair.c to use perf_order_domains and clean stubs
           fair_path = "kernel/sched/fair.c"
           if os.path.exists(fair_path):
               with open(fair_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -118,7 +129,7 @@ jobs:
                   f.write(fair_c)
               print("Reverted fair.c to use perf_order_domains")
 
-          # 3. Dynamic Regex In-Place Injection for struct perf_order_domain across all headers
+          # 4. Dynamic Regex In-Place Injection for struct perf_order_domain across all headers
           struct_pattern = re.compile(r'(struct\s+perf_order_domain\s*\{)', re.MULTILINE)
           
           for root, dirs, files in os.walk(".", followlinks=True):
@@ -135,10 +146,10 @@ jobs:
                                   with open(full_path, "w", encoding="utf-8") as f:
                                       f.write(new_content)
                                   print(f"Successfully injected perf_order_domains into {full_path}")
-                      except Exception as e:
+                      except Exception:
                           pass
 
-          # 4. Link SUSFS in fs/Makefile
+          # 5. Link SUSFS in fs/Makefile
           if os.path.exists("fs/susfs.c"):
               try:
                   with open("fs/Makefile", "r", encoding="utf-8", errors="ignore") as f:
@@ -149,7 +160,7 @@ jobs:
               except Exception:
                   pass
 
-          # 5. OpenSSL deprecation fix
+          # 6. OpenSSL deprecation fix
           cert_path = "scripts/extract-cert.c"
           if os.path.exists(cert_path):
               with open(cert_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -159,7 +170,7 @@ jobs:
                   with open(cert_path, "w", encoding="utf-8") as f:
                       f.write(cert_code)
 
-          # 6. SELinux patch
+          # 7. SELinux patch
           sel_path = "security/selinux/selinuxfs.c"
           if os.path.exists(sel_path):
               with open(sel_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -190,7 +201,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-          EXTRA_FLAGS="-w -O2 -fpermissive -Wno-error -Wno-initializer-overrides -Wno-format -Wno-enum-conversion -Wno-implicit-fallthrough -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KSU_SUSFS=1 -I$(pwd) -I."
+          EXTRA_FLAGS="-w -O2 -fpermissive -Wno-error -Wno-initializer-overrides -Wno-format -Wno-enum-conversion -Wno-implicit-fallthrough -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KSU_SUSFS=1 -I$(pwd) -I. -I$(pwd)/kernel/trace -Ikernel/trace"
 
           DEFCONFIG_FOUND=""
           for cfg in a04_defconfig a045f_defconfig a04m_defconfig a05_defconfig a05m_defconfig a04_eur_open_defconfig wingtech_defconfig; do
