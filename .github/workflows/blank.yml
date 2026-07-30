@@ -29,7 +29,6 @@ jobs:
 
           mkdir -p toolchain/clang/host/linux-x86
           git clone https://github.com/kdrag0n/proton-clang.git toolchain/clang/host/linux-x86/clang-r383902 --depth=1
-          echo "$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902/bin" >> $GITHUB_PATH
 
       - name: Integrate ReSukiSU and SUSFS Safely
         run: |
@@ -164,14 +163,22 @@ jobs:
           sed -i 's/CONFIG_FIVE=y/CONFIG_FIVE=n/g' .config || true
 
           make olddefconfig
-          
-          # بناء أدوات المضيف باستخدام مترجم النظام الأساسي لتجنب أخطاء الرابط
-          export PATH="$GCC64_PATH:$GCC32_PATH:/usr/bin:/bin"
-          make scripts -j$(nproc) HOSTCC=gcc HOSTCXX=g++ || true
 
-          # بدء تجميع النواة بالكامل باستخدام Clang
-          export PATH="$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:/usr/bin:/bin"
-          make -j$(nproc) CC=clang KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++
+          # تجميع النواة بشكل آمن عبر تمرير مسارات المترجم صراحة ومنع تداخل الـ Linker
+          export PATH="$GCC64_PATH:$GCC32_PATH:/usr/bin:/bin"
+
+          make -j$(nproc) \
+            CC="$CLANG_PATH/clang" \
+            AR="$CLANG_PATH/llvm-ar" \
+            NM="$CLANG_PATH/llvm-nm" \
+            OBJCOPY="$CLANG_PATH/llvm-objcopy" \
+            OBJDUMP="$CLang_PATH/llvm-objdump" \
+            STRIP="$CLang_PATH/llvm-strip" \
+            KCFLAGS="$EXTRA_FLAGS" \
+            WERROR=0 \
+            HOSTCC=gcc \
+            HOSTCXX=g++ \
+            HOSTLD=ld
 
       - name: Package AnyKernel3
         run: |
