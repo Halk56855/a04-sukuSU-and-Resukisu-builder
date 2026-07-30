@@ -1,4 +1,4 @@
-name: Build Samsung A04f Kernel (ReSukiSU Bootloop Fixed)
+name: Build Samsung A04 Kernel for GSI (ReSukiSU Fixed)
 
 on:
   workflow_dispatch:
@@ -50,12 +50,12 @@ jobs:
 
           echo "$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902/bin" >> $GITHUB_PATH
 
-      - name: Integrate ReSukiSU & Safe Patching
+      - name: Integrate ReSukiSU for GSI Compatibility
         run: |
           # 1. دمج ReSukiSU
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
 
-          # 2. إصلاح خطأ kheaders و cpio
+          # 2. إصلاح kheaders
           if [ -f "kernel/gen_kheaders.sh" ]; then
             echo "#!/bin/sh" > kernel/gen_kheaders.sh
             echo "exit 0" >> kernel/gen_kheaders.sh
@@ -64,32 +64,25 @@ jobs:
           mkdir -p kernel
           touch kernel/kheaders_data.tar.xz 2>/dev/null || true
 
-          # 3. تعطيل فحوصات TP Hooks البرمجية المتشددة
-          find . -name "*check*.mk" -type f -exec sh -c 'echo "all:" > "$1"' _ {} \;
-          find drivers/kernelsu/ KernelSU/ -type f \( -name "Kbuild" -o -name "*.mk" -o -name "Makefile" \) -exec sed -i 's/$(error/# $(error/g' {} + 2>/dev/null || true
-
-          # 4. حقن fallthrough
+          # 3. حقن fallthrough
           if [ -f "include/linux/compiler_types.h" ]; then
             echo -e "\n#ifndef fallthrough\n#define fallthrough do {} while (0)\n#endif" >> include/linux/compiler_types.h
           elif [ -f "include/linux/compiler.h" ]; then
             echo -e "\n#ifndef fallthrough\n#define fallthrough do {} while (0)\n#endif" >> include/linux/compiler.h
           fi
 
-          # 5. وصلة رمزية لمجلد SELinux
+          # 4. وصلة رمزية لمجلد SELinux
           mkdir -p security/selinux
           if [ ! -d "security/selinux/ss" ]; then
             ln -sf . security/selinux/ss
           fi
 
-          # 6. حقن التعريفات الآمنة لـ KernelSU
-          find drivers/kernelsu/ KernelSU/ -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null -exec sed -i '1i#undef LINUX_VERSION_CODE\n#define LINUX_VERSION_CODE 267333\n#ifndef KERNEL_VERSION\n#define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))\n#endif\n#ifndef KSU_VERSION\n#define KSU_VERSION 16\n#endif\n#ifndef KSU_VERSION_FULL\n#define KSU_VERSION_FULL "1.0.0"\n#endif\n#ifndef KSU_VERSION_CODE\n#define KSU_VERSION_CODE 10000\n#endif\n#ifndef KSU_VERSION_NAME\n#define KSU_VERSION_NAME "1.0.0"\n#endif\n#ifndef KSU_INVALID_APPID\n#define KSU_INVALID_APPID -1\n#endif\n#ifndef PER_USER_RANGE\n#define PER_USER_RANGE 100000\n#endif\n#ifndef KSU_MAX_PACKAGE_NAME\n#define KSU_MAX_PACKAGE_NAME 256\n#endif' {} + || true
-
-          # 7. الترقيع الآمن لمنع الـ Bootloop
-          cat << 'PYEOF' > patch_ksu_safe.py
+          # 5. الترقيع المتوافق مع GSI عبر Python
+          cat << 'PYEOF' > patch_gsi.py
           import os
           import re
 
-          # تصدير sel_handle_status_ops في selinuxfs.c
+          # تصدير sel_handle_status_ops لدعم ReSukiSU بدون كسر SELinux
           sel_path = "security/selinux/selinuxfs.c"
           if os.path.exists(sel_path):
               with open(sel_path, "r") as f:
@@ -99,16 +92,13 @@ jobs:
                   with open(sel_path, "w") as f:
                       f.write(sel_c)
 
-          # حقن ksu_handle_execveat في fs/exec.c بشكل آمن
+          # حقن ksu_handle_execveat في fs/exec.c
           exec_path = "fs/exec.c"
           if os.path.exists(exec_path):
               with open(exec_path, "r") as f:
                   exec_c = f.read()
               
               if "ksu_handle_execveat" not in exec_c:
-                  if "<linux/types.h>" not in exec_c:
-                      exec_c = "#include <linux/types.h>\n" + exec_c
-
                   decl = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, struct user_arg_ptr *argv, struct user_arg_ptr *envp, int *flags);\n#endif\n"
                   hook_str = "\n#ifdef CONFIG_KSU\n\tksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n#endif\n"
                   
@@ -122,16 +112,13 @@ jobs:
                   with open(exec_path, "w") as f:
                       f.write(exec_c)
 
-          # حقن ksu_handle_setresuid في kernel/sys.c بشكل آمن
+          # حقن ksu_handle_setresuid في kernel/sys.c
           sys_path = "kernel/sys.c"
           if os.path.exists(sys_path):
               with open(sys_path, "r") as f:
                   sys_c = f.read()
 
               if "ksu_handle_setresuid" not in sys_c:
-                  if "<linux/types.h>" not in sys_c:
-                      sys_c = "#include <linux/types.h>\n" + sys_c
-
                   decl = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_setresuid(uid_t *ruid, uid_t *euid, uid_t *suid);\n#endif\n"
                   hook_str = "\n#ifdef CONFIG_KSU\n\tksu_handle_setresuid(&ruid, &euid, &suid);\n#endif\n"
 
@@ -144,34 +131,11 @@ jobs:
 
                   with open(sys_path, "w") as f:
                       f.write(sys_c)
-
-          # تصحيح آمن لـ SELinux داخل KSU بدلاً من إرجاع NULL
-          for search_dir in ["drivers/kernelsu", "KernelSU"]:
-              if os.path.exists(search_dir):
-                  for root, dirs, files in os.walk(search_dir):
-                      for fname in files:
-                          filepath = os.path.join(root, fname)
-                          if fname == "selinux.c":
-                              with open(filepath, "r") as f:
-                                  c = f.read()
-                              c = c.replace("__is_selinux_state.enforcing()", "selinux_state.enforcing")
-                              c = re.sub(r"(?<![a-zA-Z0-9_])selinux_enforcing(?![a-zA-Z0-9_(\w])", "selinux_state.enforcing", c)
-                              with open(filepath, "w") as f:
-                                  f.write(c)
-                          elif fname == "rules.c":
-                              with open(filepath, "r") as f:
-                                  c = f.read()
-                              # تعطيل استدعاءات تحذيرية فقط مع الحفاظ على البنية لتجنب Kernel Panic
-                              c = c.replace("extern int avc_ss_reset(u32 seqno);", "/* extern int avc_ss_reset(u32 seqno); */")
-                              c = c.replace("avc_ss_reset(0);", "/* avc_ss_reset(0); */")
-                              c = c.replace("selinux_status_update_policyload(0);", "/* selinux_status_update_policyload(0); */")
-                              with open(filepath, "w") as f:
-                                  f.write(c)
           PYEOF
 
-          python3 patch_ksu_safe.py
+          python3 patch_gsi.py
 
-          # 8. إصلاح مسارات تضمين MediaTek
+          # 6. إصلاح مسارات MediaTek للمترجم
           find drivers/misc/mediatek/dbgtop/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <dbgtop.h>@#include "dbgtop.h"@g' {} + 2>/dev/null || true
           find drivers/misc/mediatek/debug_latch/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <plat_dbg_info.h>@#include "plat_dbg_info.h"@g' {} + 2>/dev/null || true
           find drivers/misc/mediatek/dramc/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <dramc_io.h>@#include "dramc_io.h"@g' {} + 2>/dev/null || true
@@ -198,12 +162,12 @@ jobs:
           find drivers/staging/android/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <ion.h>@#include "ion.h"@g' {} + 2>/dev/null || true
           find drivers/staging/android/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <ion_priv.h>@#include "ion_priv.h"@g' {} + 2>/dev/null || true
 
-          # 9. تحييد وتفكيك مجلد DEFEX بالكامل لمنع الـ Panic
+          # 7. تحييد حماية DEFEX الخاصة بسامسونج لمنع التعارض مع ה-GSI
           if [ -d "security/defex" ]; then
             echo "obj-y :=" > security/defex/Makefile 2>/dev/null || true
           fi
 
-          # 10. إعداد defconfig وتعطيل كافة أنظمة حماية سامسونج الأمنية التي تسبب إعادة التشغيل
+          # 8. إعداد defconfig المخصص للـ GSI
           DEFCONFIG_FILE="arch/arm64/configs/a04f_defconfig"
           if [ ! -f "$DEFCONFIG_FILE" ]; then
             DEFCONFIG_FILE=$(find arch/arm64/configs/ -name "*a04*" | head -n 1)
@@ -212,34 +176,20 @@ jobs:
           if [ -n "$DEFCONFIG_FILE" ] && [ -f "$DEFCONFIG_FILE" ]; then
             echo "CONFIG_KSU=y" >> $DEFCONFIG_FILE
             echo "CONFIG_KSU_MANUAL_HOOK=y" >> $DEFCONFIG_FILE
-            sed -i 's/CONFIG_KSU_TP_HOOK=y/CONFIG_KSU_TP_HOOK=n/g' $DEFCONFIG_FILE 2>/dev/null || true
             echo "CONFIG_KSU_TAMPER_SYS_CALL=y" >> $DEFCONFIG_FILE
             echo "CONFIG_KSU_SELINUX_HIDE=y" >> $DEFCONFIG_FILE
-            echo "CONFIG_KPM=y" >> $DEFCONFIG_FILE
             echo "CONFIG_KALLSYMS=y" >> $DEFCONFIG_FILE
             echo "CONFIG_KALLSYMS_ALL=y" >> $DEFCONFIG_FILE
 
             sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $DEFCONFIG_FILE
             echo "CONFIG_IKHEADERS=n" >> $DEFCONFIG_FILE
 
-            # تعطيل حمايات سامسونج التي تسبب Bootloop
+            # تعطيل الحمايات المسببة للإغلاق القسري مع GSI
             sed -i 's/CONFIG_SECURITY_DEFEX=y/CONFIG_SECURITY_DEFEX=n/g' $DEFCONFIG_FILE
+            sed -i 's/CONFIG_PROCA=y/CONFIG_PROCA=n/g' $DEFCONFIG_FILE
+            sed -i 's/CONFIG_FIVE=y/CONFIG_FIVE=n/g' $DEFCONFIG_FILE
             sed -i 's/CONFIG_SEC_RESTRICT_FORK=y/CONFIG_SEC_RESTRICT_FORK=n/g' $DEFCONFIG_FILE
             sed -i 's/CONFIG_SEC_RESTRICT_SETUID=y/CONFIG_SEC_RESTRICT_SETUID=n/g' $DEFCONFIG_FILE
-            sed -i 's/CONFIG_INTEGRITY=y/CONFIG_INTEGRITY=n/g' $DEFCONFIG_FILE
-            sed -i 's/CONFIG_FIVE=y/CONFIG_FIVE=n/g' $DEFCONFIG_FILE
-            sed -i 's/CONFIG_FIVE_PA_FEATURE=y/CONFIG_FIVE_PA_FEATURE=n/g' $DEFCONFIG_FILE
-            sed -i 's/CONFIG_SAMSUNG_PRODUCT_SHIP=y/CONFIG_SAMSUNG_PRODUCT_SHIP=n/g' $DEFCONFIG_FILE
-            sed -i 's/CONFIG_TIMA=y/CONFIG_TIMA=n/g' $DEFCONFIG_FILE
-            sed -i 's/CONFIG_TIMA_LKMAUTH=y/CONFIG_TIMA_LKMAUTH=n/g' $DEFCONFIG_FILE
-            sed -i 's/CONFIG_UH_RKP=y/CONFIG_UH_RKP=n/g' $DEFCONFIG_FILE
-            sed -i 's/CONFIG_RKP_CFG=y/CONFIG_RKP_CFG=n/g' $DEFCONFIG_FILE
-            sed -i 's/CONFIG_KNOX_KAP=y/CONFIG_KNOX_KAP=n/g' $DEFCONFIG_FILE
-            sed -i 's/CONFIG_PROCA=y/CONFIG_PROCA=n/g' $DEFCONFIG_FILE
-            
-            echo "CONFIG_SECURITY_DEFEX=n" >> $DEFCONFIG_FILE
-            echo "CONFIG_PROCA=n" >> $DEFCONFIG_FILE
-            echo "CONFIG_FIVE=n" >> $DEFCONFIG_FILE
           fi
 
       - name: Build Kernel
@@ -250,9 +200,9 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-          export LOCALVERSION="-ReSukiSU"
+          export LOCALVERSION="-GSI-ReSukiSU"
 
-          EXTRA_FLAGS="-w -O2 -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KPM=1 -I$(pwd) -I. \
+          EXTRA_FLAGS="-w -O2 -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -I$(pwd) -I. \
           -I$(pwd)/security/selinux \
           -I$(pwd)/security/selinux/include \
           -I$(pwd)/drivers/staging/android/mtk_ion \
@@ -341,41 +291,31 @@ jobs:
           -I$(pwd)/drivers/misc/mediatek/ccu/src \
           -I$(pwd)/drivers/misc/mediatek/ccu/src/mt6765"
 
-          make a04f_defconfig || make a04_defconfig || make a05m_defconfig || make defconfig
-          
-          # فرض إيقاف الحمايات في الإعداد النهائي
+          make a04f_defconfig || make a04_defconfig || make defconfig
+
           sed -i 's/CONFIG_IKHEADERS=y/# CONFIG_IKHEADERS is not set/g' .config || true
-          sed -i 's/CONFIG_SECURITY_DEFEX=y/# CONFIG_SECURITY_DEFEX is not set/g' .config || true
-          sed -i 's/CONFIG_PROCA=y/# CONFIG_PROCA is not set/g' .config || true
-          
           echo "CONFIG_IKHEADERS=n" >> .config
-          echo "CONFIG_SECURITY_DEFEX=n" >> .config
-          echo "CONFIG_PROCA=n" >> .config
-
-          sed -i 's/# CONFIG_KALLSYMS is not set/CONFIG_KALLSYMS=y/g' .config || true
-          sed -i 's/# CONFIG_KALLSYMS_ALL is not set/CONFIG_KALLSYMS_ALL=y/g' .config || true
-          echo "CONFIG_KALLSYMS=y" >> .config
-          echo "CONFIG_KALLSYMS_ALL=y" >> .config
-
-          sed -i 's/CONFIG_KSU_TP_HOOK=y/# CONFIG_KSU_TP_HOOK is not set/g' .config || true
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> .config
 
           make -j$(nproc) KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++ || make -j1 KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++
 
-      - name: Package Kernel into AnyKernel3
+      - name: Package Kernel into AnyKernel3 for GSI
         run: |
           git clone https://github.com/DaniTheSillyFem/AnyKernel3-a04.git --depth=1 AnyKernel3
           cp arch/arm64/boot/Image AnyKernel3/
           
           cd AnyKernel3
-          sed -i 's/kernel.string=.*/kernel.string=ReSukiSU Kernel for Samsung A04f/g' anykernel.sh || true
+          sed -i 's/kernel.string=.*/kernel.string=ReSukiSU Kernel for GSI (Samsung A04)/g' anykernel.sh || true
           sed -i 's/ExampleKernel by osm0sis @ xda-developers/ReSukiSU Kernel/g' anykernel.sh || true
 
-          zip -r9 "../ReSukiSU-Kernel-Samsung-A04f-Fixed.zip" * -x .git README.md *placeholder
+          # ضمان عدم مسح الـ Ramdisk الخاص بالـ GSI أثناء التفليش
+          sed -i 's/do.cleanup=1/do.cleanup=0/g' anykernel.sh 2>/dev/null || true
+
+          zip -r9 "../ReSukiSU-Kernel-GSI-A04.zip" * -x .git README.md *placeholder
           cd ..
 
       - name: Upload Kernel Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ReSukiSU-Kernel-Samsung-A04f-Fixed
-          path: ReSukiSU-Kernel-Samsung-A04f-Fixed.zip
+          name: ReSukiSU-Kernel-GSI-A04
+          path: ReSukiSU-Kernel-GSI-A04.zip
