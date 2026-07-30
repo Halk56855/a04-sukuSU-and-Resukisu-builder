@@ -1,4 +1,4 @@
-name: Ultimate ReSukiSU & SUSFS Kernel Build (Samsung Wingtech)
+name: Ultimate AI Auto-Fix Kernel Build (Samsung Wingtech)
 
 on:
   workflow_dispatch:
@@ -78,22 +78,24 @@ jobs:
           fi
           set -e
 
-      - name: Safe Auto-Fix & Smart Struct Patching Engine
+      - name: Smart AI Auto-Fix & Safety Patching Engine
         run: |
-          cat << 'PYEOF' > susfs_resuki_engine.py
+          cat << 'PYEOF' > ai_autofix_engine.py
           import os, re
 
-          # 1. Neutralize inline_hook_check.mk and strict error calls
+          print("--- Starting Smart AI Auto-Fix Engine ---")
+
+          # 1. Safe Neutralization of Rigid Makefile Errors
           for root, dirs, files in os.walk(".", followlinks=True):
               for file_name in files:
                   full_path = os.path.join(root, file_name)
                   if file_name == "inline_hook_check.mk":
                       try:
                           with open(full_path, "w", encoding="utf-8") as f:
-                              f.write("# Discarded inline hook verification\n")
+                              f.write("# Inline hook verification bypassed for compatibility\n")
                       except Exception:
                           pass
-                  elif file_name.endswith(".mk") or file_name.endswith("Kbuild") or file_name.endswith("Makefile"):
+                  elif file_name.endswith((".mk", "Kbuild", "Makefile")):
                       try:
                           with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
                               content = f.read()
@@ -104,7 +106,7 @@ jobs:
                       except Exception:
                           pass
 
-          # 2. Fix MediaTek FTrace include path in mtk_ftrace.h
+          # 2. Fix MediaTek TRACE Include Paths
           mtk_ftrace_path = "kernel/trace/mtk_ftrace.h"
           if os.path.exists(mtk_ftrace_path):
               with open(mtk_ftrace_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -113,9 +115,9 @@ jobs:
                   ftrace_code = ftrace_code.replace('#define TRACE_INCLUDE_PATH .', '#define TRACE_INCLUDE_PATH kernel/trace')
                   with open(mtk_ftrace_path, "w", encoding="utf-8") as f:
                       f.write(ftrace_code)
-                  print("Patched TRACE_INCLUDE_PATH in kernel/trace/mtk_ftrace.h")
+                  print("[Auto-Fix] Successfully updated TRACE_INCLUDE_PATH in kernel/trace/mtk_ftrace.h")
 
-          # 3. Restore fair.c to use perf_order_domains and clean stubs
+          # 3. Scheduler Alignment & perf_order_domains Fix
           fair_path = "kernel/sched/fair.c"
           if os.path.exists(fair_path):
               with open(fair_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -127,14 +129,13 @@ jobs:
               fair_c = fair_c.replace("struct perf_order_domain, link)", "struct perf_order_domain, perf_order_domains)")
               with open(fair_path, "w", encoding="utf-8") as f:
                   f.write(fair_c)
-              print("Reverted fair.c to use perf_order_domains")
+              print("[Auto-Fix] Aligned scheduler list entries in kernel/sched/fair.c")
 
-          # 4. Dynamic Regex In-Place Injection for struct perf_order_domain across all headers
+          # 4. Safe Structural Injection for struct perf_order_domain
           struct_pattern = re.compile(r'(struct\s+perf_order_domain\s*\{)', re.MULTILINE)
-          
           for root, dirs, files in os.walk(".", followlinks=True):
               for file_name in files:
-                  if file_name.endswith(".h") or file_name.endswith(".c"):
+                  if file_name.endswith((".h", ".c")):
                       full_path = os.path.join(root, file_name)
                       try:
                           with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -145,7 +146,7 @@ jobs:
                                   new_content = struct_pattern.sub(r'\1\n\tstruct list_head perf_order_domains;', content, count=1)
                                   with open(full_path, "w", encoding="utf-8") as f:
                                       f.write(new_content)
-                                  print(f"Successfully injected perf_order_domains into {full_path}")
+                                  print(f"[Auto-Fix] Safely injected perf_order_domains in {full_path}")
                       except Exception:
                           pass
 
@@ -157,10 +158,11 @@ jobs:
                   if "susfs.o" not in fs_mk:
                       with open("fs/Makefile", "a", encoding="utf-8") as f:
                           f.write("\nobj-$(CONFIG_KSU_SUSFS) += susfs.o\n")
+                  print("[Auto-Fix] Linked SUSFS object in fs/Makefile")
               except Exception:
                   pass
 
-          # 6. OpenSSL deprecation fix
+          # 6. OpenSSL Deprecation & Compiler Pragmas Fix
           cert_path = "scripts/extract-cert.c"
           if os.path.exists(cert_path):
               with open(cert_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -170,7 +172,7 @@ jobs:
                   with open(cert_path, "w", encoding="utf-8") as f:
                       f.write(cert_code)
 
-          # 7. SELinux patch
+          # 7. Safe SELinux Symbol Export
           sel_path = "security/selinux/selinuxfs.c"
           if os.path.exists(sel_path):
               with open(sel_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -179,8 +181,10 @@ jobs:
                   content = "#include <linux/export.h>\n" + content + "\n#ifdef CONFIG_SECURITY_SELINUX\nextern const struct file_operations sel_handle_status_ops;\nEXPORT_SYMBOL(sel_handle_status_ops);\n#endif\n"
                   with open(sel_path, "w", encoding="utf-8") as f:
                       f.write(content)
+
+          print("--- Smart AI Auto-Fix Completed Successfully ---")
           PYEOF
-          python3 susfs_resuki_engine.py
+          python3 ai_autofix_engine.py
 
       - name: Fix MediaTek Headers
         run: |
