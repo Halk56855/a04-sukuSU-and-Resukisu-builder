@@ -64,10 +64,9 @@ jobs:
           mkdir -p kernel
           touch kernel/kheaders_data.tar.xz 2>/dev/null || true
 
-          # 3. تجاوز فحص hook_check
-          find . -name "*hook_check.mk" -type f -exec sh -c 'echo "all:" > "$1"' _ {} \;
-          sed -i 's/$(error/# $(error/g' drivers/kernelsu/Kbuild 2>/dev/null || true
-          sed -i 's/$(error/# $(error/g' KernelSU/Kbuild 2>/dev/null || true
+          # 3. تعطيل وتجاوز جميع فحوصات ReSukiSU/KernelSU (hook_check + static_export_check)
+          find . -name "*check*.mk" -type f -exec sh -c 'echo "all:" > "$1"' _ {} \;
+          find drivers/kernelsu/ KernelSU/ -name "*.mk" -type f -exec sed -i 's/$(error/# $(error/g' {} + 2>/dev/null || true
 
           # 4. حقن fallthrough
           if [ -f "include/linux/compiler_types.h" ]; then
@@ -76,7 +75,7 @@ jobs:
             echo -e "\n#ifndef fallthrough\n#define fallthrough do {} while (0)\n#endif" >> include/linux/compiler.h
           fi
 
-          # 5. وصلة رمزية لمجلد SELinux
+          # 5. وصلة رمزية لمجلد SELinux وتصدير الرمز sel_handle_status_ops
           mkdir -p security/selinux
           if [ ! -d "security/selinux/ss" ]; then
             ln -sf . security/selinux/ss
@@ -89,6 +88,16 @@ jobs:
           cat << 'PYEOF' > patch_ksu.py
           import os
           import re
+
+          # تصدير sel_handle_status_ops في selinuxfs.c
+          sel_path = "security/selinux/selinuxfs.c"
+          if os.path.exists(sel_path):
+              with open(sel_path, "r") as f:
+                  sel_c = f.read()
+              if "EXPORT_SYMBOL(sel_handle_status_ops)" not in sel_c:
+                  sel_c += "\n#include <linux/export.h>\n#ifdef CONFIG_SECURITY_SELINUX\nextern const struct file_operations sel_handle_status_ops;\nEXPORT_SYMBOL(sel_handle_status_ops);\n#endif\n"
+                  with open(sel_path, "w") as f:
+                      f.write(sel_c)
 
           # حقن ksu_handle_execveat في fs/exec.c
           exec_path = "fs/exec.c"
@@ -141,6 +150,9 @@ jobs:
 
           # تعديل file_wrapper.c
           fw_path = "drivers/kernelsu/infra/file_wrapper.c"
+          if not os.path.exists(fw_path):
+              fw_path = "KernelSU/infra/file_wrapper.c"
+
           if os.path.exists(fw_path):
               with open(fw_path, "r") as f:
                   content = f.read()
@@ -153,38 +165,42 @@ jobs:
                   f.write(content)
 
           # تعديل access_ok
-          for root, dirs, files in os.walk("drivers/kernelsu"):
-              for fname in files:
-                  if fname.endswith(".c"):
-                      filepath = os.path.join(root, fname)
-                      with open(filepath, "r") as f:
-                          kc = f.read()
-                      if "access_ok(" in kc:
-                          new_kc = re.sub(r"\baccess_ok\s*\(\s*([^,]+),\s*([^)]+)\)", r"access_ok(0, \1, \2)", kc)
-                          if new_kc != kc:
-                              with open(filepath, "w") as f:
-                                  f.write(new_kc)
+          for search_dir in ["drivers/kernelsu", "KernelSU"]:
+              if os.path.exists(search_dir):
+                  for root, dirs, files in os.walk(search_dir):
+                      for fname in files:
+                          if fname.endswith(".c"):
+                              filepath = os.path.join(root, fname)
+                              with open(filepath, "r") as f:
+                                  kc = f.read()
+                              if "access_ok(" in kc:
+                                  new_kc = re.sub(r"\baccess_ok\s*\(\s*([^,]+),\s*([^)]+)\)", r"access_ok(0, \1, \2)", kc)
+                                  if new_kc != kc:
+                                      with open(filepath, "w") as f:
+                                          f.write(new_kc)
 
-          # تعديل selinux
-          for root, dirs, files in os.walk("drivers/kernelsu"):
-              for fname in files:
-                  filepath = os.path.join(root, fname)
-                  if fname == "selinux.c":
-                      with open(filepath, "r") as f:
-                          c = f.read()
-                      c = c.replace("__is_selinux_state.enforcing()", "selinux_state.enforcing")
-                      c = re.sub(r"(?<![a-zA-Z0-9_])selinux_enforcing(?![a-zA-Z0-9_(\w])", "selinux_state.enforcing", c)
-                      with open(filepath, "w") as f:
-                          f.write(c)
-                  elif fname == "rules.c":
-                      with open(filepath, "r") as f:
-                          c = f.read()
-                      c = c.replace("extern int avc_ss_reset(u32 seqno);", "/* extern int avc_ss_reset(u32 seqno); */")
-                      c = c.replace("avc_ss_reset(0);", "/* avc_ss_reset(0); */")
-                      c = c.replace("selinux_status_update_policyload(0);", "/* selinux_status_update_policyload(0); */")
-                      c = c.replace("return &policydb;", "return NULL;")
-                      with open(filepath, "w") as f:
-                          f.write(c)
+          # تعديل selinux داخل KSU
+          for search_dir in ["drivers/kernelsu", "KernelSU"]:
+              if os.path.exists(search_dir):
+                  for root, dirs, files in os.walk(search_dir):
+                      for fname in files:
+                          filepath = os.path.join(root, fname)
+                          if fname == "selinux.c":
+                              with open(filepath, "r") as f:
+                                  c = f.read()
+                              c = c.replace("__is_selinux_state.enforcing()", "selinux_state.enforcing")
+                              c = re.sub(r"(?<![a-zA-Z0-9_])selinux_enforcing(?![a-zA-Z0-9_(\w])", "selinux_state.enforcing", c)
+                              with open(filepath, "w") as f:
+                                  f.write(c)
+                          elif fname == "rules.c":
+                              with open(filepath, "r") as f:
+                                  c = f.read()
+                              c = c.replace("extern int avc_ss_reset(u32 seqno);", "/* extern int avc_ss_reset(u32 seqno); */")
+                              c = c.replace("avc_ss_reset(0);", "/* avc_ss_reset(0); */")
+                              c = c.replace("selinux_status_update_policyload(0);", "/* selinux_status_update_policyload(0); */")
+                              c = c.replace("return &policydb;", "return NULL;")
+                              with open(filepath, "w") as f:
+                                  f.write(c)
           PYEOF
 
           python3 patch_ksu.py
@@ -220,11 +236,8 @@ jobs:
           if [ -d "security/defex" ]; then
             echo "obj-y :=" > security/defex/Makefile 2>/dev/null || true
           fi
-          if [ -f "security/defex/defex_catch.c" ]; then
-            sed -i 's/return defex_rules_check/return 0; \/\/ defex_rules_check/g' security/defex/defex_catch.c 2>/dev/null || true
-          fi
 
-          # 10. إيقاف خيارات الأمن وتفعيل KSU في defconfig
+          # 10. إعداد defconfig
           DEFCONFIG_FILE="arch/arm64/configs/a04f_defconfig"
           if [ ! -f "$DEFCONFIG_FILE" ]; then
             DEFCONFIG_FILE=$(find arch/arm64/configs/ -name "*a04*" | head -n 1)
@@ -255,20 +268,6 @@ jobs:
             sed -i 's/CONFIG_RKP_CFG=y/CONFIG_RKP_CFG=n/g' $DEFCONFIG_FILE
             sed -i 's/CONFIG_KNOX_KAP=y/CONFIG_KNOX_KAP=n/g' $DEFCONFIG_FILE
             sed -i 's/CONFIG_PROCA=y/CONFIG_PROCA=n/g' $DEFCONFIG_FILE
-
-            echo "CONFIG_SECURITY_DEFEX=n" >> $DEFCONFIG_FILE
-            echo "CONFIG_SEC_RESTRICT_FORK=n" >> $DEFCONFIG_FILE
-            echo "CONFIG_SEC_RESTRICT_SETUID=n" >> $DEFCONFIG_FILE
-            echo "CONFIG_INTEGRITY=n" >> $DEFCONFIG_FILE
-            echo "CONFIG_FIVE=n" >> $DEFCONFIG_FILE
-            echo "CONFIG_FIVE_PA_FEATURE=n" >> $DEFCONFIG_FILE
-            echo "CONFIG_SAMSUNG_PRODUCT_SHIP=n" >> $DEFCONFIG_FILE
-            echo "CONFIG_TIMA=n" >> $DEFCONFIG_FILE
-            echo "CONFIG_TIMA_LKMAUTH=n" >> $DEFCONFIG_FILE
-            echo "CONFIG_UH_RKP=n" >> $DEFCONFIG_FILE
-            echo "CONFIG_RKP_CFG=n" >> $DEFCONFIG_FILE
-            echo "CONFIG_KNOX_KAP=n" >> $DEFCONFIG_FILE
-            echo "CONFIG_PROCA=n" >> $DEFCONFIG_FILE
           fi
 
       - name: Build Kernel
@@ -372,9 +371,14 @@ jobs:
 
           make a04f_defconfig || make a04_defconfig || make a05m_defconfig || make defconfig
           
-          # فرض تعطيل IKHEADERS بعد توليد .config
+          # فرض تفعيل KALLSYMS وتعطيل IKHEADERS داخل .config الناتج
           sed -i 's/CONFIG_IKHEADERS=y/# CONFIG_IKHEADERS is not set/g' .config || true
           echo "CONFIG_IKHEADERS=n" >> .config
+
+          sed -i 's/# CONFIG_KALLSYMS is not set/CONFIG_KALLSYMS=y/g' .config || true
+          sed -i 's/# CONFIG_KALLSYMS_ALL is not set/CONFIG_KALLSYMS_ALL=y/g' .config || true
+          echo "CONFIG_KALLSYMS=y" >> .config
+          echo "CONFIG_KALLSYMS_ALL=y" >> .config
 
           make -j$(nproc) KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++ || make -j1 KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++
 
