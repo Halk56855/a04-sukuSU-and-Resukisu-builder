@@ -1,7 +1,19 @@
-name: Ultimate ReSukiSU & SUSFS Kernel Build for Samsung A045F
+name: Ultimate ReSukiSU & SUSFS Kernel Build (Samsung Wingtech)
 
 on:
   workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Choose Kernel Branch'
+        required: true
+        default: 'a04-u8'
+        type: choice
+        options:
+          - a04-u8
+          - android-4.19-stable
+          - U8
+          - rebased
+          - ui7
 
 jobs:
   build:
@@ -11,7 +23,8 @@ jobs:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
-          repository: physwizz/a045m-T-s4
+          repository: NovaAgatha/kernel_samsung_wingtech
+          ref: ${{ github.event.inputs.branch || 'a04-u8' }}
 
       - name: Install System Dependencies
         run: |
@@ -91,7 +104,7 @@ jobs:
                       except Exception:
                           pass
 
-          # 2. Safe in-place patch for perf_order_domain across all headers without duplication
+          # 2. In-place struct patch for perf_order_domain across Wingtech headers
           for root, dirs, files in os.walk(".", followlinks=True):
               for file_name in files:
                   if file_name.endswith(".h") or file_name.endswith(".c"):
@@ -111,13 +124,12 @@ jobs:
                       except Exception:
                           pass
 
-          # 3. Clean list_entry alignment in kernel/sched/fair.c
+          # 3. Align list_entry in kernel/sched/fair.c
           fair_path = "kernel/sched/fair.c"
           if os.path.exists(fair_path):
               with open(fair_path, "r", encoding="utf-8", errors="ignore") as f:
                   fair_c = f.read()
               
-              # If stub was inserted at top previously, remove it to avoid redefinition
               if "STRUCT_PERF_ORDER_DOMAIN_STUB" in fair_c:
                   fair_c = re.sub(r'/\* Ultimate Auto-Fix stub for perf_order_domain \*/[\s\S]*?#endif\n', '', fair_c)
                   with open(fair_path, "w", encoding="utf-8") as f:
@@ -132,7 +144,7 @@ jobs:
                   if new_fair_c != fair_c:
                       with open(fair_path, "w", encoding="utf-8") as f:
                           f.write(new_fair_c)
-                      print("Aligned list_entry in fair.c to use 'link'")
+                      print("Aligned list_entry in fair.c")
 
           # 4. Link SUSFS in fs/Makefile
           if os.path.exists("fs/susfs.c"):
@@ -189,7 +201,7 @@ jobs:
           EXTRA_FLAGS="-w -O2 -fpermissive -Wno-error -Wno-initializer-overrides -Wno-format -Wno-enum-conversion -Wno-implicit-fallthrough -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KSU_SUSFS=1 -I$(pwd) -I."
 
           DEFCONFIG_FOUND=""
-          for cfg in a045f_defconfig a045m_defconfig a04_defconfig a04m_defconfig a04_eur_open_defconfig; do
+          for cfg in a04_defconfig a045f_defconfig a04m_defconfig a05_defconfig a05m_defconfig a04_eur_open_defconfig wingtech_defconfig; do
             if [ -f "arch/arm64/configs/$cfg" ]; then
               DEFCONFIG_FOUND="$cfg"
               break
@@ -253,12 +265,12 @@ jobs:
           git clone https://github.com/DaniTheSillyFem/AnyKernel3-a04.git --depth=1 AnyKernel3
           cp arch/arm64/boot/Image AnyKernel3/
           cd AnyKernel3
-          sed -i 's/kernel.string=.*/kernel.string=ReSukiSU + SUSFS Stable Kernel (Samsung A045F)/g' anykernel.sh || true
-          zip -r9 "../ReSukiSU-SUSFS-Kernel-A045F.zip" * -x .git README.md *placeholder
+          sed -i 's/kernel.string=.*/kernel.string=ReSukiSU + SUSFS Stable Kernel (Wingtech A04/A05)/g' anykernel.sh || true
+          zip -r9 "../ReSukiSU-SUSFS-Kernel-Wingtech.zip" * -x .git README.md *placeholder
           cd ..
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ReSukiSU-SUSFS-Kernel-A045F
-          path: ReSukiSU-SUSFS-Kernel-A045F.zip
+          name: ReSukiSU-SUSFS-Kernel-Wingtech
+          path: ReSukiSU-SUSFS-Kernel-Wingtech.zip
