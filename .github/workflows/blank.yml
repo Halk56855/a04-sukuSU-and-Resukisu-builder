@@ -138,7 +138,11 @@ jobs:
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH=$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902/bin:$GITHUB_WORKSPACE/gcc64/bin:$GITHUB_WORKSPACE/gcc32/bin:$PATH
+          
+          CLANG_PATH="$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902/bin"
+          GCC64_PATH="$GITHUB_WORKSPACE/gcc64/bin"
+          GCC32_PATH="$GITHUB_WORKSPACE/gcc32/bin"
+          
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
@@ -160,7 +164,14 @@ jobs:
           sed -i 's/CONFIG_FIVE=y/CONFIG_FIVE=n/g' .config || true
 
           make olddefconfig
-          make -j$(nproc) KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++
+          
+          # بناء أدوات المضيف باستخدام مترجم النظام الأساسي لتجنب أخطاء الرابط
+          export PATH="$GCC64_PATH:$GCC32_PATH:/usr/bin:/bin"
+          make scripts -j$(nproc) HOSTCC=gcc HOSTCXX=g++ || true
+
+          # بدء تجميع النواة بالكامل باستخدام Clang
+          export PATH="$CLANG_PATH:$GCC64_PATH:$GCC32_PATH:/usr/bin:/bin"
+          make -j$(nproc) CC=clang KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++
 
       - name: Package AnyKernel3
         run: |
