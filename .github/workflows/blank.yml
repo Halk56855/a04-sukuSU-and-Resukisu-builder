@@ -68,9 +68,9 @@ jobs:
       - name: Ultimate Auto-Fix & Scheduler Patching Engine
         run: |
           cat << 'PYEOF' > susfs_resuki_engine.py
-          import os
+          import os, re
 
-          # 1. Neutralize inline_hook_check.mk and strict error checks
+          # 1. Neutralize inline_hook_check.mk and strict error calls
           for root, dirs, files in os.walk(".", followlinks=True):
               for file_name in files:
                   full_path = os.path.join(root, file_name)
@@ -91,57 +91,50 @@ jobs:
                       except Exception:
                           pass
 
-          # 2. Complete Auto-Fix for perf_order_domain in MediaTek Scheduler
-          found_struct = False
+          # 2. Safe in-place patch for perf_order_domain across all headers without duplication
           for root, dirs, files in os.walk(".", followlinks=True):
-              for f in files:
-                  if f.endswith(".h") or f.endswith(".c"):
-                      path = os.path.join(root, f)
+              for file_name in files:
+                  if file_name.endswith(".h") or file_name.endswith(".c"):
+                      full_path = os.path.join(root, file_name)
                       try:
-                          with open(path, "r", encoding="utf-8", errors="ignore") as file:
-                              content = file.read()
+                          with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+                              content = f.read()
                           if "struct perf_order_domain {" in content:
-                              found_struct = True
                               if "perf_order_domains;" not in content:
                                   content = content.replace(
                                       "struct perf_order_domain {",
-                                      "struct perf_order_domain {\n    struct list_head perf_order_domains;"
+                                      "struct perf_order_domain {\n\tstruct list_head perf_order_domains;"
                                   )
-                                  with open(path, "w", encoding="utf-8") as file:
-                                      file.write(content)
-                                  print(f"Patched existing struct perf_order_domain in {path}")
+                                  with open(full_path, "w", encoding="utf-8") as f:
+                                      f.write(content)
+                                  print(f"Patched struct perf_order_domain in {full_path}")
                       except Exception:
                           pass
 
+          # 3. Clean list_entry alignment in kernel/sched/fair.c
           fair_path = "kernel/sched/fair.c"
           if os.path.exists(fair_path):
               with open(fair_path, "r", encoding="utf-8", errors="ignore") as f:
                   fair_c = f.read()
               
-              stub = (
-                  "/* Ultimate Auto-Fix stub for perf_order_domain */\n"
-                  "#include <linux/cpumask.h>\n"
-                  "#include <linux/list.h>\n"
-                  "#ifndef STRUCT_PERF_ORDER_DOMAIN_STUB\n"
-                  "#define STRUCT_PERF_ORDER_DOMAIN_STUB\n"
-                  "struct perf_order_domain {\n"
-                  "    struct list_head link;\n"
-                  "    struct list_head perf_order_domains;\n"
-                  "    struct cpumask possible_cpus;\n"
-                  "    unsigned long max_capacity;\n"
-                  "    unsigned long capacity;\n"
-                  "    int cpus_num;\n"
-                  "    int cpu;\n"
-                  "};\n"
-                  "#endif\n"
-              )
-              if "STRUCT_PERF_ORDER_DOMAIN_STUB" not in fair_c:
-                  fair_c = stub + fair_c
+              # If stub was inserted at top previously, remove it to avoid redefinition
+              if "STRUCT_PERF_ORDER_DOMAIN_STUB" in fair_c:
+                  fair_c = re.sub(r'/\* Ultimate Auto-Fix stub for perf_order_domain \*/[\s\S]*?#endif\n', '', fair_c)
                   with open(fair_path, "w", encoding="utf-8") as f:
                       f.write(fair_c)
-                  print("Injected complete perf_order_domain stub into fair.c")
 
-          # 3. Link SUSFS in fs/Makefile
+              if "list_entry(" in fair_c and "perf_order_domain" in fair_c:
+                  new_fair_c = re.sub(
+                      r'list_entry\(\s*([^,]+)\s*,\s*struct\s+perf_order_domain\s*,\s*perf_order_domains\s*\)',
+                      r'list_entry(\1, struct perf_order_domain, link)',
+                      fair_c
+                  )
+                  if new_fair_c != fair_c:
+                      with open(fair_path, "w", encoding="utf-8") as f:
+                          f.write(new_fair_c)
+                      print("Aligned list_entry in fair.c to use 'link'")
+
+          # 4. Link SUSFS in fs/Makefile
           if os.path.exists("fs/susfs.c"):
               try:
                   with open("fs/Makefile", "r", encoding="utf-8", errors="ignore") as f:
@@ -152,7 +145,7 @@ jobs:
               except Exception:
                   pass
 
-          # 4. OpenSSL deprecation fix
+          # 5. OpenSSL deprecation fix
           cert_path = "scripts/extract-cert.c"
           if os.path.exists(cert_path):
               with open(cert_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -162,7 +155,7 @@ jobs:
                   with open(cert_path, "w", encoding="utf-8") as f:
                       f.write(cert_code)
 
-          # 5. SELinux patch
+          # 6. SELinux patch
           sel_path = "security/selinux/selinuxfs.c"
           if os.path.exists(sel_path):
               with open(sel_path, "r", encoding="utf-8", errors="ignore") as f:
