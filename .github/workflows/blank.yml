@@ -71,15 +71,15 @@ jobs:
           import re
           import glob
 
-          # 1. Bypass OpenSSL 3 deprecation errors in scripts/Makefile permanently
-          scripts_mk = "scripts/Makefile"
-          if os.path.exists(scripts_mk):
-              with open(scripts_mk, "r") as f:
-                  mk_content = f.read()
-              if "-Wno-error=deprecated-declarations" not in mk_content:
-                  mk_content = "HOSTCFLAGS += -Wno-error=deprecated-declarations -Wno-deprecated-declarations\n" + mk_content
-                  with open(scripts_mk, "w") as f:
-                      f.write(mk_content)
+          # 1. Directly patch scripts/extract-cert.c to bypass OpenSSL 3 deprecation errors completely
+          cert_path = "scripts/extract-cert.c"
+          if os.path.exists(cert_path):
+              with open(cert_path, "r") as f:
+                  cert_code = f.read()
+              if "#pragma GCC diagnostic ignored" not in cert_code:
+                cert_code = "#pragma GCC diagnostic ignored \"-Wdeprecated-declarations\"\n#pragma GCC diagnostic ignored \"-Wformat-security\"\n" + cert_code
+                with open(cert_path, "w") as f:
+                    f.write(cert_code)
 
           # 2. Neutralize strict inline hook checks to prevent any build interruption
           for mk_file in glob.glob("**/inline_hook_check.mk", recursive=True):
@@ -198,7 +198,7 @@ jobs:
             OBJDUMP="$CLANG_PATH/llvm-objdump" \
             STRIP="$CLANG_PATH/llvm-strip" \
             KCFLAGS="$EXTRA_FLAGS" \
-            HOSTCFLAGS="-Wno-error=deprecated-declarations" \
+            HOSTCFLAGS="-Wno-error=deprecated-declarations -Wno-deprecated-declarations" \
             WERROR=0 \
             HOSTCC=gcc \
             HOSTCXX=g++ \
