@@ -78,7 +78,7 @@ jobs:
           fi
           set -e
 
-      - name: Ultimate Auto-Fix & Scheduler Patching Engine
+      - name: Safe Auto-Fix & Smart Struct Patching Engine
         run: |
           cat << 'PYEOF' > susfs_resuki_engine.py
           import os, re
@@ -104,27 +104,7 @@ jobs:
                       except Exception:
                           pass
 
-          # 2. In-place struct patch for perf_order_domain across Wingtech headers
-          for root, dirs, files in os.walk(".", followlinks=True):
-              for file_name in files:
-                  if file_name.endswith(".h") or file_name.endswith(".c"):
-                      full_path = os.path.join(root, file_name)
-                      try:
-                          with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
-                              content = f.read()
-                          if "struct perf_order_domain {" in content:
-                              if "perf_order_domains;" not in content:
-                                  content = content.replace(
-                                      "struct perf_order_domain {",
-                                      "struct perf_order_domain {\n\tstruct list_head perf_order_domains;"
-                                  )
-                                  with open(full_path, "w", encoding="utf-8") as f:
-                                      f.write(content)
-                                  print(f"Patched struct perf_order_domain in {full_path}")
-                      except Exception:
-                          pass
-
-          # 3. Align list_entry in kernel/sched/fair.c
+          # 2. Restore fair.c to use perf_order_domains and clean stubs
           fair_path = "kernel/sched/fair.c"
           if os.path.exists(fair_path):
               with open(fair_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -132,19 +112,31 @@ jobs:
               
               if "STRUCT_PERF_ORDER_DOMAIN_STUB" in fair_c:
                   fair_c = re.sub(r'/\* Ultimate Auto-Fix stub for perf_order_domain \*/[\s\S]*?#endif\n', '', fair_c)
-                  with open(fair_path, "w", encoding="utf-8") as f:
-                      f.write(fair_c)
 
-              if "list_entry(" in fair_c and "perf_order_domain" in fair_c:
-                  new_fair_c = re.sub(
-                      r'list_entry\(\s*([^,]+)\s*,\s*struct\s+perf_order_domain\s*,\s*perf_order_domains\s*\)',
-                      r'list_entry(\1, struct perf_order_domain, link)',
-                      fair_c
-                  )
-                  if new_fair_c != fair_c:
-                      with open(fair_path, "w", encoding="utf-8") as f:
-                          f.write(new_fair_c)
-                      print("Aligned list_entry in fair.c")
+              fair_c = fair_c.replace("struct perf_order_domain, link)", "struct perf_order_domain, perf_order_domains)")
+              with open(fair_path, "w", encoding="utf-8") as f:
+                  f.write(fair_c)
+              print("Reverted fair.c to use perf_order_domains")
+
+          # 3. Dynamic Regex In-Place Injection for struct perf_order_domain across all headers
+          struct_pattern = re.compile(r'(struct\s+perf_order_domain\s*\{)', re.MULTILINE)
+          
+          for root, dirs, files in os.walk(".", followlinks=True):
+              for file_name in files:
+                  if file_name.endswith(".h") or file_name.endswith(".c"):
+                      full_path = os.path.join(root, file_name)
+                      try:
+                          with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+                              content = f.read()
+                          
+                          if struct_pattern.search(content):
+                              if "perf_order_domains" not in content:
+                                  new_content = struct_pattern.sub(r'\1\n\tstruct list_head perf_order_domains;', content, count=1)
+                                  with open(full_path, "w", encoding="utf-8") as f:
+                                      f.write(new_content)
+                                  print(f"Successfully injected perf_order_domains into {full_path}")
+                      except Exception as e:
+                          pass
 
           # 4. Link SUSFS in fs/Makefile
           if os.path.exists("fs/susfs.c"):
