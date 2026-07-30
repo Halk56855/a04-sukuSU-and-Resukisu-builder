@@ -28,21 +28,26 @@ jobs:
           git clone https://github.com/kdrag0n/proton-clang.git toolchain/clang/host/linux-x86/clang-r383902 --depth=1
           echo "$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902/bin" >> $GITHUB_PATH
 
-      - name: Integrate ReSukiSU and SUSFS
+      - name: Integrate ReSukiSU and SUSFS Safely
         run: |
+          set +e
           rm -rf kernel/ksu drivers/kernelsu
           
-          # 1. دمج ReSukiSU الأساسي
-          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
+          git clone https://github.com/ReSukiSU/ReSukiSU.git --depth=1 resuki_repo
+          if [ -f "resuki_repo/kernel/setup.sh" ]; then
+            bash resuki_repo/kernel/setup.sh main
+          else
+            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
+          fi
+          rm -rf resuki_repo
 
-          # 2. جلب ودمج حزمة SUSFS المتوافقة مع النواة (إصدار 4.19)
-          git clone https://github.com/SimplicityH/kernel_patches.git --depth=1 -b 4.19 susfs_patches || true
+          git clone https://github.com/SimplicityH/kernel_patches.git --depth=1 susfs_patches || true
           if [ -d "susfs_patches/50_susfs_4.19" ]; then
             cp -r susfs_patches/50_susfs_4.19/fs/* fs/ 2>/dev/null || true
             cp -r susfs_patches/50_susfs_4.19/include/* include/ 2>/dev/null || true
           fi
+          rm -rf susfs_patches
 
-          # تعطيل kheaders لمنع أخطاء البناء
           if [ -f "kernel/gen_kheaders.sh" ]; then
             echo "#!/bin/sh" > kernel/gen_kheaders.sh
             echo "exit 0" >> kernel/gen_kheaders.sh
@@ -51,11 +56,11 @@ jobs:
           mkdir -p kernel
           touch kernel/kheaders_data.tar.xz 2>/dev/null || true
 
-          # تصحيح مسار SELinux
           mkdir -p security/selinux
           if [ ! -d "security/selinux/ss" ]; then
             ln -sf . security/selinux/ss
           fi
+          set -e
 
       - name: Smart Hooks & SUSFS Auto-Patching Engine
         run: |
@@ -63,7 +68,6 @@ jobs:
           import os
           import re
 
-          # 1. إصلاح SELinux
           sel_path = "security/selinux/selinuxfs.c"
           if os.path.exists(sel_path):
               with open(sel_path, "r") as f:
@@ -73,7 +77,6 @@ jobs:
                   with open(sel_path, "w") as f:
                       f.write(content)
 
-          # 2. حقن Manual Hooks و SUSFS Hooks في fs/open.c و fs/exec.c و kernel/sys.c
           exec_path = "fs/exec.c"
           if os.path.exists(exec_path):
               with open(exec_path, "r") as f:
@@ -140,7 +143,6 @@ jobs:
 
           make a04f_defconfig || make defconfig
 
-          # تفعيل متغيرات ReSukiSU و SUSFS بدقة تامة بناءً على التوثيق
           echo "CONFIG_KALLSYMS=y" >> .config
           echo "CONFIG_KALLSYMS_ALL=y" >> .config
           echo "CONFIG_KSU=y" >> .config
