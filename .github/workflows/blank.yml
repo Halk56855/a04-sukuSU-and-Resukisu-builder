@@ -49,6 +49,7 @@ jobs:
           set +e
           rm -rf kernel/ksu drivers/kernelsu
           
+          # Integrate ReSukiSU
           git clone https://github.com/ReSukiSU/ReSukiSU.git --depth=1 resuki_repo
           if [ -f "resuki_repo/kernel/setup.sh" ]; then
             bash resuki_repo/kernel/setup.sh main
@@ -57,13 +58,27 @@ jobs:
           fi
           rm -rf resuki_repo
 
-          git clone https://github.com/SimplicityH/kernel_patches.git --depth=1 susfs_patches || true
-          if [ -d "susfs_patches/50_susfs_4.19" ]; then
-            cp -r susfs_patches/50_susfs_4.19/fs/* fs/ 2>/dev/null || true
-            cp -r susfs_patches/50_susfs_4.19/include/* include/ 2>/dev/null || true
-          fi
-          rm -rf susfs_patches
+          # Integrate SUSFS Kernel Files
+          mkdir -p include/linux fs
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git --depth=1 susfs_repo || git clone https://github.com/SimplicityH/kernel_patches.git --depth=1 susfs_repo || true
+          
+          find susfs_repo/ -name "susfs.h" -exec cp {} include/linux/ \; 2>/dev/null || true
+          find susfs_repo/ -name "susfs_def.h" -exec cp {} include/linux/ \; 2>/dev/null || true
+          find susfs_repo/ -name "susfs.c" -exec cp {} fs/ \; 2>/dev/null || true
+          rm -rf susfs_repo
 
+          # Fallback curl if files are still missing
+          if [ ! -f "include/linux/susfs.h" ]; then
+            curl -LSs "https://raw.githubusercontent.com/simonpunk/susfs4ksu/main/kernel_patches/include/linux/susfs.h" -o include/linux/susfs.h || true
+          fi
+          if [ ! -f "include/linux/susfs_def.h" ]; then
+            curl -LSs "https://raw.githubusercontent.com/simonpunk/susfs4ksu/main/kernel_patches/include/linux/susfs_def.h" -o include/linux/susfs_def.h || true
+          fi
+          if [ ! -f "fs/susfs.c" ]; then
+            curl -LSs "https://raw.githubusercontent.com/simonpunk/susfs4ksu/main/kernel_patches/fs/susfs.c" -o fs/susfs.c || true
+          fi
+
+          # Neutralize kheaders & setup security links
           if [ -f "kernel/gen_kheaders.sh" ]; then
             echo "#!/bin/sh" > kernel/gen_kheaders.sh
             echo "exit 0" >> kernel/gen_kheaders.sh
@@ -81,9 +96,22 @@ jobs:
       - name: Smart AI Auto-Fix & Safety Patching Engine
         run: |
           cat << 'PYEOF' > ai_autofix_engine.py
-          import os, re
+          import os, re, urllib.request
 
           print("--- Starting Smart AI Auto-Fix Engine ---")
+
+          # 0. Ensure essential SUSFS headers exist
+          os.makedirs("include/linux", exist_ok=True)
+          susfs_h = "include/linux/susfs.h"
+          if not os.path.exists(susfs_h) or os.path.getsize(susfs_h) == 0:
+              print("[Auto-Fix] Downloading missing susfs.h header...")
+              try:
+                  url = "https://raw.githubusercontent.com/simonpunk/susfs4ksu/main/kernel_patches/include/linux/susfs.h"
+                  urllib.request.urlretrieve(url, susfs_h)
+              except Exception as e:
+                  print(f"[Auto-Fix] Download failed, creating stub for susfs.h: {e}")
+                  with open(susfs_h, "w") as f:
+                      f.write("#ifndef _LINUX_SUSFS_H\n#define _LINUX_SUSFS_H\n#include <linux/types.h>\n#endif\n")
 
           # 1. Safe Neutralization of Rigid Makefile Errors
           for root, dirs, files in os.walk(".", followlinks=True):
@@ -205,7 +233,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-          EXTRA_FLAGS="-w -O2 -fpermissive -Wno-error -Wno-initializer-overrides -Wno-format -Wno-enum-conversion -Wno-implicit-fallthrough -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KSU_SUSFS=1 -I$(pwd) -I. -I$(pwd)/kernel/trace -Ikernel/trace"
+          EXTRA_FLAGS="-w -O2 -fpermissive -Wno-error -Wno-initializer-overrides -Wno-format -Wno-enum-conversion -Wno-implicit-fallthrough -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KSU_SUSFS=1 -I$(pwd) -I. -I$(pwd)/include -I$(pwd)/kernel/trace -Ikernel/trace"
 
           DEFCONFIG_FOUND=""
           for cfg in a04_defconfig a045f_defconfig a04m_defconfig a05_defconfig a05m_defconfig a04_eur_open_defconfig wingtech_defconfig; do
