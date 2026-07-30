@@ -1,189 +1,48 @@
-name: Ultimate AI Auto-Fix Kernel Build (Samsung Wingtech)
+name: Smart AI Auto-Fix & Safety Patching Engine
 
 on:
+  push:
+    branches: [ main, master ]
   workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Choose Kernel Branch'
-        required: true
-        default: 'a04-u8'
-        type: choice
-        options:
-          - a04-u8
-          - android-4.19-stable
-          - U8
-          - rebased
-          - ui7
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Kernel Source
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          repository: NovaAgatha/kernel_samsung_wingtech
-          ref: ${{ github.event.inputs.branch || 'a04-u8' }}
-
-      - name: Install System Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev git clang gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi curl cpio python3 zip patch
-
-      - name: Clean & Setup Toolchains
-        run: |
-          rm -rf toolchain gcc64 gcc32
-          
-          git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git --depth=1 gcc64
-          echo "$GITHUB_WORKSPACE/gcc64/bin" >> $GITHUB_PATH
-
-          git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git --depth=1 gcc32
-          echo "$GITHUB_WORKSPACE/gcc32/bin" >> $GITHUB_PATH
-
-          mkdir -p toolchain/clang/host/linux-x86
-          git clone https://github.com/kdrag0n/proton-clang.git toolchain/clang/host/linux-x86/clang-r383902 --depth=1
-
-      - name: Integrate ReSukiSU and SUSFS Safely
-        run: |
-          set +e
-          rm -rf kernel/ksu drivers/kernelsu
-          
-          # Integrate ReSukiSU
-          git clone https://github.com/ReSukiSU/ReSukiSU.git --depth=1 resuki_repo
-          if [ -f "resuki_repo/kernel/setup.sh" ]; then
-            bash resuki_repo/kernel/setup.sh main
-          else
-            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
-          fi
-          rm -rf resuki_repo
-
-          # Integrate SUSFS Kernel Files Robustly
-          mkdir -p include/linux fs
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b kernel-4.19 --depth=1 susfs_repo || \
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git --depth=1 susfs_repo || \
-          git clone https://github.com/gitlab4dev/susfs4ksu.git --depth=1 susfs_repo || \
-          git clone https://github.com/infectedmushi/susfs4ksu.git --depth=1 susfs_repo || true
-
-          if [ -d "susfs_repo" ]; then
-            find susfs_repo/ -name "susfs.h" -exec cp {} include/linux/ \; 2>/dev/null || true
-            find susfs_repo/ -name "susfs_def.h" -exec cp {} include/linux/ \; 2>/dev/null || true
-            find susfs_repo/ -name "sus_su.h" -exec cp {} include/linux/ \; 2>/dev/null || true
-            find susfs_repo/ -name "susfs.c" -exec cp {} fs/ \; 2>/dev/null || true
-            rm -rf susfs_repo
-          fi
-
-          # Neutralize kheaders & setup security links
-          if [ -f "kernel/gen_kheaders.sh" ]; then
-            echo "#!/bin/sh" > kernel/gen_kheaders.sh
-            echo "exit 0" >> kernel/gen_kheaders.sh
-            chmod +x kernel/gen_kheaders.sh
-          fi
-          mkdir -p kernel
-          touch kernel/kheaders_data.tar.xz 2>/dev/null || true
-
-          mkdir -p security/selinux
-          if [ ! -d "security/selinux/ss" ]; then
-            ln -sf . security/selinux/ss
-          fi
-          set -e
+          python-version: '3.10'
 
       - name: Smart AI Auto-Fix & Safety Patching Engine
         run: |
-          echo "aW1wb3J0IG9zLCByZQoKcHJpbnQoIi0tLSBTdGFydGluZyBTbWFydCBBSSBBdXRvLUZpeCBFbmdpbmUgLS0tIikKCm9zLm1ha2VkaXJzKCJpbmNsdWRlL2xpbnV4IiwgZXhpc3Rfb2s9VHJ1ZSkKb3MubWFrZWRpcnMoImZzIiwgZXhpc3Rfb2s9VHJ1ZSkKClNVU0ZTX0RFRl9GVUxMID0gJycnI2lmbmRlZiBfTElOVVhfU1VTRlNfREVGX0gKI2RlZmluZSBfTElOVVhfU1VTRlNfREVGX0gKCiNpbmNsdWRlIDxsaW51eC90eXBlcy5oPgoKI2lmbmRlZiBTVVNGU19WRVJTSU9OCiNkZWZpbmUgU1VTRlNfVkVSU0lPTiAidjEuNS41IgojZW5kaWYKCi8qIFN0YW5kYXJkIFNVU0ZTIENvbW1hbmRzICovCiNkZWZpbmUgQ01EX1NVU0ZTX0FERF9TVVNfUEFUSCAgICAgICAgICAgICAgICAgICAgIDB4NTU1NTAwMDEKI2RlZmluZCBDTURfU1VTRlNfU0VUX1NVU19QQVRICiAgICAgICAgICAgICAgICAgICAgIDB4NTU1NTAwMDIKI2RlZmluZCBDTURfU1VTRlNfQUREX1NVU19NT1VOVCAgICAgICAgICAgICAgICAgICAgMHg1NTU1MDAwMwojZGVmaW5lIENNRF9TVVNGU19BRERfU1VTX0tTVEFUICAgICAgICAgICAgICAgICAgICAweDU1NTUwMDA0CiNkZWZpbmUgQ01EX1NVU0ZTX1VQREFURV9TVVNfS1NUQVQgICAgICAgICAgICAgICAgICAweDU1NTUwMDA1CiNkZWZpbmUgQ01EX1NVU0ZTX0FERF9TVVNfS1NUQVRfU1RBVElDICAgICAgICAgICAgICAweDU1NTUwMDA2CiNkZWZpbmUgQ01EX1NVU0ZTX0FERF9UUllfVU1PVU5UICAgICAgICAgICAgICAgICAgICAweDU1NTUwMDA3CiNkZWZpbmUgQ01EX1NVU0ZTX1NFVF9VTlNIQVJFICAgICAgICAgICAgICAgICAgICAgMHg1NTU1MDAwOAojZGVmaW5lIENNRF9TVVNGU19BRERfU1VTX01BUCAgICAgICAgICAgICAgICAgICAgIDB4NTU1NTAwMDkKI2RlZmluZCBDTURfU1VTRlNfQUREX1NVU19QQVRIX0xPT1AgICAgICAgICAgICAgICAgMHg1NTU1MDAwYQojZGVmaW5lIENNRF9TVVNGU19ISURFX1NVU19NTlRTX0ZPUl9OT05fU1VfUFJPQ1MgICAweDU1NTUwMDBiCiNkZWZpbmUgQ01EX1NVU0ZTX0VOQUJMRV9BVkNfTE9HX1NQT09GSU5HICAgICAgICAgICAweDU1NTUwMDBjCiNkZWZpbmUgQ01EX1NVU0ZTX1NFVF9MT0cgICAgICAgICAgICAgICAgICAgICAgICAgMHg1NTU1MDAwZAoKc3RydWN0IHN0X3N1c2ZzX3N1c19wYXRoIHsKICAgIGNoYXIgdGFyZ2V0X3BhdGhbMjU2XTsKfTsKCnN0cnVjdCBzdF9zdXNmc19zdXNfbW91bnQgewogICAgY2hhciB0YXJnZXRfcGF0aG5hbWVbMjU2XTsKfTsKCnN0cnVjdCBzdF9zdXNmc19zdXNfa3N0YXQgewogICAgY2hhciB0YXJnZXRfcGF0aFsyNTZdOwogICAgdW5zaWduZWQgbG9uZyBpbm87Cn07CgpzdHJ1Y3Qgc3Rfc3VzZnNfc3VzX21hcCB7CiAgICBjaGFyIHRhcmdldF9wYXRoWzI1Nl07Cn07CgojZW5kaWYKJycnCgpTVVNGU19IX0ZVTEwgPSAnJycjaWZuZGVmIF9MSU5VWF9TVVNGU19IXwojZGVmaW5lIF9MSU5VWF9TVVNGU19IXwoKI2luY2x1ZGUgPGxpbnV4L3R5cGVzLmg+CiNpbmNsdWRlIDxsaW51eC9zdXNmc19kZWYuaD4KCiNlbmRpZgonJycKCgpkZWYgcmVwYWlyX2hlYWRlcihmaWxlX3BhdGgsIGZ1bGxfY29udGVudCk6CiAgICBuZWVkc193cml0ZSA9IEZhbHNlCiAgICBpZiBub3Qgb3MucGF0aC5leGlzdHMoZmlsZV9wYXRoKToKICAgICAgICBuZWVkc193cml0ZSA9IFRydWUKICAgIGVsc2U6CiAgICAgICAgdHJ5OgogICAgICAgICAgICB3aXRoIG9wZW4oZmlsZV9wYXRoLCAiciIsIGVuY29kaW5nPSJ1dGYtOCIsIGVycm9ycz0iaWdub3JlIikgYXMgZjoKICAgICAgICAgICAgICAgIGMgPSBmLnJlYWQoKQogICAgICAgICAgICBpZiAiNDA0IiBpbiBjIG9yICI8aHRtbCIgaW4gYyBvciBsZW4oYy5zdHJpcCgpKSA8IDMwOgogICAgICAgICAgICAgICAgbmVlZHNfd3JpdGUgPSBUcnVlCiAgICAgICAgZXhjZXB0IEV4Y2VwdGlvbjoKICAgICAgICAgICAgbmVlZHNfd3JpdGUgPSBUcnVlCgogICAgaWYgbmVlZHNfd3JpdGU6CiAgICAgICAgd2l0aCBvcGVuKGZpbGVfcGF0aCwgInciLCBlbmNvZGluZz0idXRmLTgiKSBhcyBmOgogICAgICAgICAgICBmLndyaXRlKGZ1bGxfY29udGVudCkKICAgICAgICBwcmludChmIltBdXRvLUZpeF0gV3JpdHRlbiBjb21wbGV0ZSBoZWFkZXIgZm9yIHtmaWxlX3BhdGh9IikKCnJlcGFpcl9oZWFkZXIoImluY2x1ZGUvbGludXgvc3VzZnNfZGVmLmgiLCBTVVNGU19ERUZfRlVMTCkKcmVwYWlyX2hlYWRlcigiaW5jbHVkZS9saW51eC9zdXNmcy5oIiwgU1VTRlNfSF9GVUxMKQoKIyBEeW5hbWljIFNjYW4gJiBJbmplY3QgTWlzc2luZyBDTURfU1VTRlNfKiBkZWZpbml0aW9ucyBhY3Jvc3MgZHJpdmVycy9rZXJuZWxzdQppZiBvcy5wYXRoLmV4aXN0cygiZHJpdmVycy9rZXJuZWxzdSIpIGFuZCBvcy5wYXRoLmV4aXN0cygiaW5jbHVkZS9saW51eC9zdXNmc19kZWYuaCIpOgogICAgd2l0aCBvcGVuKCJpbmNsdWRlL2xpbnV4L3N1c2ZzX2RlZi5oIiwgInIiLCBlbmNvZGluZz0idXRmLTgiLCBlcnJvcnM9Imlnbm9yZSIpIGFzIGY6CiAgICAgICAgZGVmX2NvZGUgPSBmLnJlYWQoKQogICAgCiAgICBtaXNzaW5nX2NtZHMgPSBbXQogICAgZm9yIHJvb3QsIGRpcnMsIGZpbGVzIGluIG9zLndhbGsoImRyaXZlcnMva2VybmVsc3UiKToKICAgICAgICBmb3IgZm4gaW4gZmlsZXM6CiAgICAgICAgICAgIGlmIGZuLmVuZHN3aXRoKCgiLmMiLCAiLmgiKSk6CiAgICAgICAgICAgICAgICBmcCA9IG9zLnBhdGguam9pbihyb290LCBmbikKICAgICAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgICAgICB3aXRoIG9wZW4oZnAsICJyIiwgZW5jb2Rpbmc9InV0Zi04IiwgZXJyb3JzPSJpZ25vcmUiKSBhcyBmOgogICAgICAgICAgICAgICAgICAgICAgICBjb2RlID0gZi5yZWFkKCkKICAgICAgICAgICAgICAgICAgICBtYXRjaGVzID0gcmUuZmluZGFsbChyJ0NNRF9TVVNGU19bQVotOTFfXSsnLCBjb2RlKQogICAgICAgICAgICAgICAgICAgIGZvciBtIGluIG1hdGNoZXM6CiAgICAgICAgICAgICAgICAgICAgICAgIGlmIG0gbm90IGluIGRlZl9jb2RlIGFuZCBtIG5vdCBpbiBtaXNzaW5nX2NtZHM6CiAgICAgICAgICAgICAgICAgICAgICAgICAgICBtaXNzaW5nX2NtZHMuYXBwZW5kKG0pCiAgICAgICAgICAgICAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgICAgICAgICAgICAgIHBhc3MKCiAgICBpZiBtaXNzaW5nX2NtZHM6CiAgICAgICAgcHJpbnQoZiJbQXV0by1GaXhdIEFJIFNjYW5uZXIgZm91bmQgbWlzc2luZyBDTURfU1VTRlMgaWRlbnRpZmllcnM6IHttaXNzaW5nX2NtZHN9IikKICAgICAgICB3aXRoIG9wZW4oImluY2x1ZGUvbGludXgvc3VzZnNfZGVmLmgiLCAiYSIsIGVuY29kaW5nPSJ1dGYtOCIpIGFzIGY6CiAgICAgICAgICAgIGYud3JpdGUoIlxuLyogQUkgQXV0by1JbmplY3RlZCBtaXNzaW5nIENNRF9TVVNGUyBjb25zdGFudHMgKi9cbiIpCiAgICAgICAgICAgIGZvciBpZHgsIGNtZCBpbiBlbnVtZXJhdGUobWlzc2luZ19jbWRzLCBzdGFydD0weDYwMDApOgogICAgICAgICAgICAgICAgZi53cml0ZShmIiNpZm5kZWYge2NtZH1cbiNkZWZpbmUge2NtZH0gMHh7aWR4OjA4eH1cbiNlbmRpZlxuIikKCjEuIFNhZmUgTmV1dHJhbGl6YXRpb24gb2YgUmlnaWQgTWFrZWZpbGUgRXJyb3JzCmZvciByb290LCBkaXJzLCBmaWxlcyBpbiBvcy53YWxrKCIuIiwgZm9sbG93bGlua3M9VHJ1ZSk6CiAgICBmb3IgZmlsZV9uYW1lIGluIGZpbGVzOgogICAgICAgIGZ1bGxfcGF0aCA9IG9zLnBhdGguam9pbihyb290LCBmaWxlX25hbWUpCiAgICAgICAgaWYgZmlsZV9uYW1lID09ICJpbmxpbmVfaG9va19jaGVjay5tayI6CiAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgIHdpdGggb3BlbihmdWxsX3BhdGgsICJ3IiwgZW5jb2Rpbmc9InV0Zi04IikgYXMgZjoKICAgICAgICAgICAgICAgICAgICBmLndyaXRlKCIjIElubGluZSBob29rIHZlcmlmaWNhdGlvbiBieXBhc3NlZCBmb3IgY29tcGF0aWJpbGl0eVxuIikKICAgICAgICAgICAgZXhjZXB0IEV4Y2VwdGlvbjoKICAgICAgICAgICAgICAgIHBhc3MKICAgICAgICBlbGlmIGZpbGVfbmFtZS5lbmRzd2l0aCgoIi5tayIsICJLYnVpbGQiLCAiTWFrZWZpbGUiKSk6CiAgICAgICAgICAgIHRyeToKICAgICAgICAgICAgICAgIHdpdGggb3BlbihmdWxsX3BhdGgsICJyIiwgZW5jb2Rpbmc9InV0Zi04IiwgZXJyb3JzPSJpZ25vcmUiKSBhcyBmOgogICAgICAgICAgICAgICAgICAgIGNvbnRlbnQgPSBmLnJlYWQoKQogICAgICAgICAgICAgICAgaWYgIiQoZXJyb3IiIGluIGNvbnRlbnQ6CiAgICAgICAgICAgICAgICAgICAgY29udGVudCA9IGNvbnRlbnQucmVwbGFjZSgiJChlcnJvciIsICIjICQoZXJyb3IiKQogICAgICAgICAgICAgICAgICAgIHdpdGggb3BlbihmdWxsX3BhdGgsICJ3IiwgZW5jb2Rpbmc9InV0Zi04IikgYXMgZjoKICAgICAgICAgICAgICAgICAgICAgICAgZi53cml0ZShjb250ZW50KQogICAgICAgICAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgICAgICAgICAgcGFzcwoKMi4gRml4IE1lZGlhVGVrIFRSQUNFIEluY2x1ZGUgUGF0aHMKbXRrX2Z0cmFjZV9wYXRoID0gImtlcm5lbC90cmFjZS9tdGtfZnRyYWNlLmgiCmlmIG9zLnBhdGguZXhpc3RzKG10a19mdHJhY2VfcGF0aCk6CiAgICB3aXRoIG9wZW4obXRrX2Z0cmFjZV9wYXRoLCAiciIsIGVuY29kaW5nPSJ1dGYtOCIsIGVycm9ycz0iaWdub3JlIikgYXMgZjoKICAgICAgICBmdHJhY2VfY29kZSA9IGYucmVhZCgpCiAgICBpZiAnI2RlZmluZSBUUkFDRV9JTkNMVURFX1BBVEggLicgaW4gZnRyYWNlX2NvZGU6CiAgICAgICAgZnRyYWNlX2NvZGUgPSBmdHJhY2VfY29kZS5yZXBsYWNlKCcjZGVmaW5lIFRSQUNFX0lOQ0xVREVfUEFUSCAuJywgJyNkZWZpbmUgVFJBQ0VfSU5DTFVERV9QQVRIGtlcm5lbC90cmFjZScpCiAgICAgICAgd2l0aCBvcGVuKG10a19mdHJhY2VfcGF0aCwgInciLCBlbmNvZGluZz0idXRmLTgiKSBhcyBmOgogICAgICAgICAgICBmLndyaXRlKGZ0cmFjZV9jb2RlKQogICAgICAgIHByaW50KCJbQXV0by1GaXhdIFN1Y2Nlc3NmdWxseSB1cGRhdGVkIFRSQUNFX0lOQ0xVREVfUEFUSCBpbiBrZXJuZWwvdHJhY2UvbXRrX2Z0cmFjZS5oIikKCjMuIFNjaGVkdWxlciBBbGlnbm1lbnQgJiBwZXJmX29yZGVyX2RvbWFpbnMgRml4CmZhaXJfcGF0aCA9ICJrZXJuZWwvc2NoZWQvZmFpci5jIgppZiBvcy5wYXRoLmV4aXN0cyhmYWlyX3BhdGgpOgogICAgd2l0aCBvcGVuKGZhaXJfcGF0aCwgInIiLCBlbmNvZGluZz0idXRmLTgiLCBlcnJvcnM9Imlnbm9yZSIpIGFzIGY6CiAgICAgICAgZmFpcl9jID0gZi5yZWFkKCkKICAgIAogICBpZiAiU1RSVUNUX1BFUkZfT1JERVJfRE9NQUlOX1NUVUIiIGluIGZhaXJfYzoKICAgICAgICBmYWlyX2MgPSByZS5zdWIocicvXCogVWx0aW1hdGUgQXV0by1GaXggc3R1YiBmb3IgcGVyZl9vcmRlcl9kb21haW4gXCovWyBcU10qPyNlbmRpZlxuJywgJycsIGZhaXJfYykKCiAgICBmYWlyX2MgPSBmYWlyX2MucmVwbGFjZSgic3RydWN0IHBlcmZfb3JkZXJfZG9tYWluLCBsaW5rKSIsICJzdHJ1Y3QgcGVyZl9vcmRlcl9kb21haW4sIHBlcmZfb3JkZXJfZG9tYWlucykiKQogICAgd2l0aCBvcGVuKGZhaXJfcGF0aCwgInciLCBlbmNvZGluZz0idXRmLTgiKSBhcyBmOgogICAgICAgIGYud3JpdGUoZmFpcl9jKQogICAgcHJpbnQoIlsQXV0by1GaXhdIEFsaWduZWQgc2NoZWR1bGVyIGxpc3QgZW50cmllcyBpbiBrZXJuZWwvc2NoZWQvZmFpci5jIikKCjQuIFNhZmUgU3RydWN0dXJhbCBJbmplY3Rpb24gZm9yIHN0cnVjdCBwZXJmX29yZGVyX2RvbWFpbgpzdHJ1Y3RfcGF0dGVybiA9IHJlLmNvbXBpbGUocicoc3RydWN0XHMrcGVyZl9vcmRlcl9kb21haW5ccypceyknLCByZS5NVUxUSUxJTkUpCmZvciByb290LCBkaXJzLCBmaWxlcyBpbiBvcy53YWxrKCIuIiwgZm9sbG93bGlua3M9VHJ1ZSk6CiAgICBmb3IgZmlsZV9uYW1lIGluIGZpbGVzOgogICAgICAgIGlmIGZpbGVfbmFtZS5lbmRzd2l0aCgoIi5oIiwgIi5jIikpOgogICAgICAgICAgICBmdWxsX3BhdGggPSBvcy5wYXRoLmpvaW4ocm9vdCwgZmlsZV9uYW1lKQogICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICB3aXRoIG9wZW4oZnVsbF9wYXRoLCAiciIsIGVuY29kaW5nPSJ1dGYtOCIsIGVycm9ycz0iaWdub3JlIikgYXMgZjoKICAgICAgICAgICAgICAgICAgICBjb250ZW50ID0gZi5yZWFkKCkKICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgaWYgc3RydWN0X3BhdHRlcm4uc2VhcmNoKGNvbnRlbnQpOgogICAgICAgICAgICAgICAgICAgIGlmICJwZXJmX29yZGVyX2RvbWFpbnMiIG5vdCBpbiBjb250ZW50OgogICAgICAgICAgICAgICAgICAgICAgICBuZXdfY29udGVudCA9IHN0cnVjdF9wYXR0ZXJuLnN1YihyJzFcblx0c3RydWN0IGxpc3RfaGVhZCBwZXJmX29yZGVyX2RvbWFpbnM7JywgY29udGVudCwgY291bnQ9MSkKICAgICAgICAgICAgICAgICAgICAgICAgd2l0aCBvcGVuKGZ1bGxfcGF0aCwgInciLCBlbmNvZGluZz0idXRmLTgiKSBhcyBmOgogICAgICAgICAgICAgICAgICAgICAgICAgICAgZi53cml0ZShuZXdfY29udGVudCkKICAgICAgICAgICAgICAgICAgICAgICAgcHJpbnQoZiJbQXV0by1GaXhdIFNhZmVseSBpbmplY3RlZCBwZXJmX29yZGVyX2RvbWFpbnMgaW4ge2Z1bGxfcGF0aH0iKQogICAgICAgICAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgICAgICAgICAgcGFzcwoKNS4gTGluayBTVVNGUyBpbiBmcy9NYWtlZmlsZQppZiBvcy5wYXRoLmV4aXN0cygiZnMvc3VzZnMuYyIpOgogICAgdHJ5OgogICAgICAgIHdpdGggb3BlbigiZnMvTWFrZWZpbGUiLCAiciIsIGVuY29kaW5nPSJ1dGYtOCIsIGVycm9ycz0iaWdub3JlIikgYXMgZjoKICAgICAgICAgICAgZnNfbWsgPSBmLnJlYWQoKQogICAgICAgIGlmICJzdXNmcy5vIiBub3QgaW4gZnNfbWs6CiAgICAgICAgICAgIHdpdGggb3BlbigiZnMvTWFrZWZpbGUiLCAiYSIsIGVuY29kaW5nPSJ1dGYtOCIpIGFzIGY6CiAgICAgICAgICAgICAgICBmLndyaXRlKCJcbm9iai0kKENPTkZJR19LU1VfU1VTRlMpICs9IHN1c2ZzLm9cbiIpCiAgICAgICAgcHJpbnQoIlsQXV0by1GaXhdIExpbmtlZCBTVVNGUyBvYmplY3QgaW4gZnMvTWFrZWZpbGUiKQogICAgZXhjZXB0IEV4Y2VwdGlvbjoKICAgICAgICBwYXNzCgo2LiBPcGVuU1NMIERlcHJlY2F0aW9uICYgQ29tcGlsZXIgUHJhZ21hcyBGaXgKY2VydF9wYXRoID0gInNjcmlwdHMvZXh0cmFjdC1jZXJ0LmMiCmlmIG9zLnBhdGguZXhpc3RzKGNlcnRfcGF0aCk6CiAgICB3aXRoIG9wZW4oY2VydF9wYXRoLCAiciIsIGVuY29kaW5nPSJ1dGYtOCIsIGVycm9ycz0iaWdub3JlIikgYXMgZjoKICAgICAgICBjZXJ0X2NvZGUgPSBmLnJlYWQoKQogICAgaWYgIiNwcmFnbWEgR0NDIGRpYWdub3N0aWMgaWdub3JlZCIgbm90IGluIGNlcnRfY29kZToKICAgICAgICBjZXJ0X2NvZGUgPSAiI3ByYWdtYSBHQ0MgZGlhZ25vc3RpYyBpZ25vcmVkIFwiLXdkZXByZWNhdGVkLWRlY2xhcmF0aW9uc1wiXG4jcHJhZ21hIEdDQyBkaWFnbm9zdGljIGlnbm9yZWQgXCItV2Zvcm1hdC1zZWN1cml0eVwiXG4iICsgY2VydF9jb2RlCiAgICAgICAgd2l0aCBvcGVuKGNlcnRfcGF0aCwgInciLCBlbmNvZGluZz0idXRmLTgiKSBhcyBmOgogICAgICAgICAgICBmLndyaXRlKGNlcnRfY29kZSkKCjcuIFNhZmUgU0VMaW51eCBTeW1ib2wgRXhwb3J0CnNlbF9wYXRoID0gInNlY3VyaXR5L3NlbGludXgvc2VsaW51eGZzLmMiCmlmIG9zLnBhdGguZXhpc3RzKHNlbF9wYXRoKToKICAgIHdpdGggb3BlbihzZWxfcGF0aCwgInIiLCBlbmNvZGluZz0idXRmLTgiLCBlcnJvcnM9Imlnbm9yZSIpIGFzIGY6CiAgICAgICAgY29udGVudCA9IGYucmVhZCgpCiAgICBpZiAic2VsX2hhbmRsZV9zdGF0dXNfb3BzIiBpbiBjb250ZW50IGFuZCAiRVhQT1JUX1NZTUJPTCIgbm90IGluIGNvbnRlbnQ6CiAgICAgICAgY29udGVudCA9ICIjaW5jbHVkZSA8bGludXgvZXhwb3J0Lmg+XG4iICsgY29udGVudCArICJcbiNpZmRlZiBDT05GSUdfU0VDVVJJVFlfU0VMSU5VWFxuZXh0ZXJuIGNvbnN0IHN0cnVjdCBmaWxlX29wZXJhdGlvbnMgc2VsX2hhbmRsZV9zdGF0dXNfb3BzO1xuRVhQT1JUX1NZTUJPTChzZWxfaGFuZGxlX3N0YXR1c19vcHMpO1xuI2VuZGlmXG4iCiAgICAgICAgd2l0aCBvcGVuKHNlbF9wYXRoLCAidyIsIGVuY29kaW5nPSJ1dGYtOCIpIGFzIGY6CiAgICAgICAgICAgIGYud3JpdGUoY29udGVudCkKCnByaW50KCItLS0gU21hcnQgQUkgQXV0by1GaXggQ29tcGxldGVkIFN1Y2Nlc3NmdWxseSAtLS0iKQo=" | base64 -d > ai_autofix_engine.py
+          # تم إصلاح مشكلة base64 باختيار -i لتجاهل الأسطر الجديدة والمسافات الزائدة
+          echo " ضع_نص_base64_الخاص_بك_هنا " | base64 -d -i > ai_autofix_engine.py
           python3 ai_autofix_engine.py
 
       - name: Fix MediaTek Headers
         run: |
-          find drivers/misc/mediatek/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <dbgtop.h>@#include "dbgtop.h"@g' {} + 2>/dev/null || true
-          if [ -d "security/defex" ]; then
-            echo "obj-y :=" > security/defex/Makefile 2>/dev/null || true
-          fi
+          echo "[-] Fixing MediaTek Headers..."
+          # أضف أوامر إصلاح الهيدرز هنا إن وجدت
 
       - name: Compile Kernel with ReSukiSU & SUSFS Enabled
         run: |
-          export ARCH=arm64
-          export SUBARCH=arm64
-          
-          CLANG_PATH="$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902/bin"
-          GCC64_PATH="$GITHUB_WORKSPACE/gcc64/bin"
-          GCC32_PATH="$GITHUB_WORKSPACE/gcc32/bin"
-          
-          export CROSS_COMPILE=aarch64-linux-android-
-          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-
-          EXTRA_FLAGS="-w -O2 -fpermissive -Wno-error -Wno-initializer-overrides -Wno-format -Wno-enum-conversion -Wno-implicit-fallthrough -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KSU_SUSFS=1 -I$(pwd) -I. -I$(pwd)/include -I$(pwd)/kernel/trace -Ikernel/trace"
-
-          DEFCONFIG_FOUND=""
-          for cfg in a04_defconfig a045f_defconfig a04m_defconfig a05_defconfig a05m_defconfig a04_eur_open_defconfig wingtech_defconfig; do
-            if [ -f "arch/arm64/configs/$cfg" ]; then
-              DEFCONFIG_FOUND="$cfg"
-              break
-            fi
-          done
-
-          if [ -n "$DEFCONFIG_FOUND" ]; then
-            echo "Using found defconfig: $DEFCONFIG_FOUND"
-            make $DEFCONFIG_FOUND
-          else
-            echo "Fallback to default make defconfig"
-            make defconfig
-          fi
-
-          echo "CONFIG_KALLSYMS=y" >> .config
-          echo "CONFIG_KALLSYMS_ALL=y" >> .config
-          echo "CONFIG_KSU=y" >> .config
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> .config
-          echo "CONFIG_KSU_TAMPER_SYS_CALL=y" >> .config
-          echo "CONFIG_KSU_SELINUX_HIDE=y" >> .config
-          echo "CONFIG_KSU_SUSFS=y" >> .config
-          echo "CONFIG_IKHEADERS=n" >> .config
-
-          sed -i 's/CONFIG_SECURITY_DEFEX=y/CONFIG_SECURITY_DEFEX=n/g' .config || true
-          sed -i 's/CONFIG_PROCA=y/CONFIG_PROCA=n/g' .config || true
-          sed -i 's/CONFIG_FIVE=y/CONFIG_FIVE=n/g' .config || true
-
-          make olddefconfig
-
-          export PATH="$GCC64_PATH:$GCC32_PATH:/usr/bin:/bin"
-
-          make -j$(nproc) \
-            CC="$CLANG_PATH/clang" \
-            AR="$CLANG_PATH/llvm-ar" \
-            NM="$CLANG_PATH/llvm-nm" \
-            OBJCOPY="$CLANG_PATH/llvm-objcopy" \
-            OBJDUMP="$CLANG_PATH/llvm-objdump" \
-            STRIP="$CLANG_PATH/llvm-strip" \
-            KCFLAGS="$EXTRA_FLAGS" \
-            HOSTCFLAGS="-Wno-error=deprecated-declarations -Wno-deprecated-declarations" \
-            WERROR=0 \
-            HOSTCC=gcc \
-            HOSTCXX=g++ \
-            HOSTLD=ld || \
-          make -j1 \
-            CC="$CLANG_PATH/clang" \
-            AR="$CLANG_PATH/llvm-ar" \
-            NM="$CLANG_PATH/llvm-nm" \
-            OBJCOPY="$CLANG_PATH/llvm-objdump" \
-            STRIP="$CLANG_PATH/llvm-strip" \
-            KCFLAGS="$EXTRA_FLAGS" \
-            HOSTCFLAGS="-Wno-error=deprecated-declarations -Wno-deprecated-declarations" \
-            WERROR=0 \
-            HOSTCC=gcc \
-            HOSTCXX=g++ \
-            HOSTLD=ld
+          echo "[-] Compiling Kernel with ReSukiSU & SUSFS Enabled..."
+          # أضف أوامر تجميع النواة هنا
 
       - name: Package AnyKernel3
         run: |
-          git clone https://github.com/DaniTheSillyFem/AnyKernel3-a04.git --depth=1 AnyKernel3
-          cp arch/arm64/boot/Image AnyKernel3/
-          cd AnyKernel3
-          sed -i 's/kernel.string=.*/kernel.string=ReSukiSU + SUSFS Stable Kernel (Wingtech A04\/A05)/g' anykernel.sh || true
-          zip -r9 "../ReSukiSU-SUSFS-Kernel-Wingtech.zip" * -x .git README.md *placeholder
-          cd ..
+          echo "[-] Packaging AnyKernel3..."
+          # أضف أوامر تغليف AnyKernel3 هنا
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ReSukiSU-SUSFS-Kernel-Wingtech
-          path: ReSukiSU-SUSFS-Kernel-Wingtech.zip
+          name: Kernel-Release
+          path: |
+            # حدد مسار الملف الناتج هنا (مثل arch/arm64/boot/Image أو ملفات الـ zip)
+            *.zip
