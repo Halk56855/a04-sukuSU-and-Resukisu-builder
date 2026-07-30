@@ -1,4 +1,4 @@
-name: Ultimate ReSukiSU & SUSFS Kernel Build for Samsung A04
+name: Ultimate ReSukiSU & SUSFS Kernel Build for Samsung A045M (Physwizz)
 
 on:
   workflow_dispatch:
@@ -11,8 +11,7 @@ jobs:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
-          repository: rsuntk-oss/android_kernel_samsung_a04m
-          ref: latest-B
+          repository: physwizz/a045m-T-s4
 
       - name: Install System Dependencies
         run: |
@@ -226,12 +225,12 @@ jobs:
           git clone https://github.com/DaniTheSillyFem/AnyKernel3-a04.git --depth=1 AnyKernel3
           cp arch/arm64/boot/Image AnyKernel3/
           cd AnyKernel3
-          sed -i 's/kernel.string=.*/kernel.string=ReSukiSU + SUSFS Stable Kernel (Samsung A04)/g' anykernel.sh || true
-          zip -r9 "../ReSukiSU-SUSFS-Kernel-A04.zip" * -x .git README.md *placeholder
+          sed -i 's/kernel.string=.*/kernel.string=ReSukiSU + SUSFS Physwizz Kernel (Samsung A045M)/g' anykernel.sh || true
+          zip -r9 "../ReSukiSU-SUSFS-Kernel-A045M.zip" * -x .git README.md *placeholder
           cd ..
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ReSukiSU-SUSFS-Kernel-A04
-          path: ReSukiSU-SUSFS-Kernel-A04.zip
+          name: ReSukiSU-SUSFS-Kernel-A045M
+          path: ReSukiSU-SUSFS-Kernel-A045M.zip
