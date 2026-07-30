@@ -1,4 +1,4 @@
-name: Build Samsung A04f Kernel (ReSukiSU Only - Fixed)
+name: Build Samsung A04f Kernel (ReSukiSU Bootloop Fixed)
 
 on:
   workflow_dispatch:
@@ -50,7 +50,7 @@ jobs:
 
           echo "$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902/bin" >> $GITHUB_PATH
 
-      - name: Integrate ReSukiSU & Patch Kernel Code
+      - name: Integrate ReSukiSU & Safe Patching
         run: |
           # 1. دمج ReSukiSU
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
@@ -64,7 +64,7 @@ jobs:
           mkdir -p kernel
           touch kernel/kheaders_data.tar.xz 2>/dev/null || true
 
-          # 3. تعطيل وتجاوز جميع فحوصات TP Hooks و static_export_check و hook_check في ReSukiSU
+          # 3. تعطيل فحوصات TP Hooks البرمجية المتشددة
           find . -name "*check*.mk" -type f -exec sh -c 'echo "all:" > "$1"' _ {} \;
           find drivers/kernelsu/ KernelSU/ -type f \( -name "Kbuild" -o -name "*.mk" -o -name "Makefile" \) -exec sed -i 's/$(error/# $(error/g' {} + 2>/dev/null || true
 
@@ -81,11 +81,11 @@ jobs:
             ln -sf . security/selinux/ss
           fi
 
-          # 6. حقن التعريفات الثابتة لـ KernelSU
+          # 6. حقن التعريفات الآمنة لـ KernelSU
           find drivers/kernelsu/ KernelSU/ -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null -exec sed -i '1i#undef LINUX_VERSION_CODE\n#define LINUX_VERSION_CODE 267333\n#ifndef KERNEL_VERSION\n#define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))\n#endif\n#ifndef KSU_VERSION\n#define KSU_VERSION 16\n#endif\n#ifndef KSU_VERSION_FULL\n#define KSU_VERSION_FULL "1.0.0"\n#endif\n#ifndef KSU_VERSION_CODE\n#define KSU_VERSION_CODE 10000\n#endif\n#ifndef KSU_VERSION_NAME\n#define KSU_VERSION_NAME "1.0.0"\n#endif\n#ifndef KSU_INVALID_APPID\n#define KSU_INVALID_APPID -1\n#endif\n#ifndef PER_USER_RANGE\n#define PER_USER_RANGE 100000\n#endif\n#ifndef KSU_MAX_PACKAGE_NAME\n#define KSU_MAX_PACKAGE_NAME 256\n#endif' {} + || true
 
-          # 7. تطبيق الترقيعات البرمجية عبر Python (تصحيح خطأ execveat_sucompat)
-          cat << 'PYEOF' > patch_ksu.py
+          # 7. الترقيع الآمن لمنع الـ Bootloop
+          cat << 'PYEOF' > patch_ksu_safe.py
           import os
           import re
 
@@ -99,7 +99,7 @@ jobs:
                   with open(sel_path, "w") as f:
                       f.write(sel_c)
 
-          # حقن ksu_handle_execveat في fs/exec.c
+          # حقن ksu_handle_execveat في fs/exec.c بشكل آمن
           exec_path = "fs/exec.c"
           if os.path.exists(exec_path):
               with open(exec_path, "r") as f:
@@ -118,14 +118,11 @@ jobs:
                   elif "do_execveat" in exec_c:
                       exec_c = exec_c.replace("int do_execveat", decl + "int do_execveat", 1)
                       exec_c = re.sub(r"(int\s+do_execveat\s*\([^)]*\)\s*\{)", r"\1" + hook_str, exec_c, count=1)
-                  elif "__do_execveat_file" in exec_c:
-                      exec_c = exec_c.replace("static int __do_execveat_file", decl + "static int __do_execveat_file", 1)
-                      exec_c = re.sub(r"(static\s+int\s+__do_execveat_file\s*\([^)]*\)\s*\{)", r"\1" + hook_str, exec_c, count=1)
                       
                   with open(exec_path, "w") as f:
                       f.write(exec_c)
 
-          # حقن ksu_handle_setresuid في kernel/sys.c
+          # حقن ksu_handle_setresuid في kernel/sys.c بشكل آمن
           sys_path = "kernel/sys.c"
           if os.path.exists(sys_path):
               with open(sys_path, "r") as f:
@@ -148,38 +145,7 @@ jobs:
                   with open(sys_path, "w") as f:
                       f.write(sys_c)
 
-          # تعديل file_wrapper.c
-          fw_path = "drivers/kernelsu/infra/file_wrapper.c"
-          if not os.path.exists(fw_path):
-              fw_path = "KernelSU/infra/file_wrapper.c"
-
-          if os.path.exists(fw_path):
-              with open(fw_path, "r") as f:
-                  content = f.read()
-              content = content.replace("static void ksu_release_file_wrapper", "void ksu_release_file_wrapper")
-              content = re.sub(r"p->ops\.remap_file_range\s*=.*?;", "/* p->ops.remap_file_range disabled */", content)
-              content = re.sub(r"p->ops\.fadvise\s*=.*?;", "/* p->ops.fadvise disabled */", content)
-              content = content.replace("REMAP_FILE_DEDUP", "0")
-              content = re.sub(r"(static\s+\w+\s+ksu_wrapper_remap_file_range\s*\(.*?\n\{)(.*?\n\})(\s*\})?", r"/* \1\2\3 */", content, flags=re.DOTALL)
-              with open(fw_path, "w") as f:
-                  f.write(content)
-
-          # تعديل access_ok
-          for search_dir in ["drivers/kernelsu", "KernelSU"]:
-              if os.path.exists(search_dir):
-                  for root, dirs, files in os.walk(search_dir):
-                      for fname in files:
-                          if fname.endswith(".c"):
-                              filepath = os.path.join(root, fname)
-                              with open(filepath, "r") as f:
-                                  kc = f.read()
-                              if "access_ok(" in kc:
-                                  new_kc = re.sub(r"\baccess_ok\s*\(\s*([^,]+),\s*([^)]+)\)", r"access_ok(0, \1, \2)", kc)
-                                  if new_kc != kc:
-                                      with open(filepath, "w") as f:
-                                          f.write(new_kc)
-
-          # تعديل selinux داخل KSU
+          # تصحيح آمن لـ SELinux داخل KSU بدلاً من إرجاع NULL
           for search_dir in ["drivers/kernelsu", "KernelSU"]:
               if os.path.exists(search_dir):
                   for root, dirs, files in os.walk(search_dir):
@@ -195,15 +161,15 @@ jobs:
                           elif fname == "rules.c":
                               with open(filepath, "r") as f:
                                   c = f.read()
+                              # تعطيل استدعاءات تحذيرية فقط مع الحفاظ على البنية لتجنب Kernel Panic
                               c = c.replace("extern int avc_ss_reset(u32 seqno);", "/* extern int avc_ss_reset(u32 seqno); */")
                               c = c.replace("avc_ss_reset(0);", "/* avc_ss_reset(0); */")
                               c = c.replace("selinux_status_update_policyload(0);", "/* selinux_status_update_policyload(0); */")
-                              c = c.replace("return &policydb;", "return NULL;")
                               with open(filepath, "w") as f:
                                   f.write(c)
           PYEOF
 
-          python3 patch_ksu.py
+          python3 patch_ksu_safe.py
 
           # 8. إصلاح مسارات تضمين MediaTek
           find drivers/misc/mediatek/dbgtop/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <dbgtop.h>@#include "dbgtop.h"@g' {} + 2>/dev/null || true
@@ -232,12 +198,12 @@ jobs:
           find drivers/staging/android/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <ion.h>@#include "ion.h"@g' {} + 2>/dev/null || true
           find drivers/staging/android/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <ion_priv.h>@#include "ion_priv.h"@g' {} + 2>/dev/null || true
 
-          # 9. تحييد مجلد DEFEX
+          # 9. تحييد وتفكيك مجلد DEFEX بالكامل لمنع الـ Panic
           if [ -d "security/defex" ]; then
             echo "obj-y :=" > security/defex/Makefile 2>/dev/null || true
           fi
 
-          # 10. إعداد defconfig فرض MANUAL_HOOK وتعطيل TP_HOOK
+          # 10. إعداد defconfig وتعطيل كافة أنظمة حماية سامسونج الأمنية التي تسبب إعادة التشغيل
           DEFCONFIG_FILE="arch/arm64/configs/a04f_defconfig"
           if [ ! -f "$DEFCONFIG_FILE" ]; then
             DEFCONFIG_FILE=$(find arch/arm64/configs/ -name "*a04*" | head -n 1)
@@ -256,6 +222,7 @@ jobs:
             sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $DEFCONFIG_FILE
             echo "CONFIG_IKHEADERS=n" >> $DEFCONFIG_FILE
 
+            # تعطيل حمايات سامسونج التي تسبب Bootloop
             sed -i 's/CONFIG_SECURITY_DEFEX=y/CONFIG_SECURITY_DEFEX=n/g' $DEFCONFIG_FILE
             sed -i 's/CONFIG_SEC_RESTRICT_FORK=y/CONFIG_SEC_RESTRICT_FORK=n/g' $DEFCONFIG_FILE
             sed -i 's/CONFIG_SEC_RESTRICT_SETUID=y/CONFIG_SEC_RESTRICT_SETUID=n/g' $DEFCONFIG_FILE
@@ -269,6 +236,10 @@ jobs:
             sed -i 's/CONFIG_RKP_CFG=y/CONFIG_RKP_CFG=n/g' $DEFCONFIG_FILE
             sed -i 's/CONFIG_KNOX_KAP=y/CONFIG_KNOX_KAP=n/g' $DEFCONFIG_FILE
             sed -i 's/CONFIG_PROCA=y/CONFIG_PROCA=n/g' $DEFCONFIG_FILE
+            
+            echo "CONFIG_SECURITY_DEFEX=n" >> $DEFCONFIG_FILE
+            echo "CONFIG_PROCA=n" >> $DEFCONFIG_FILE
+            echo "CONFIG_FIVE=n" >> $DEFCONFIG_FILE
           fi
 
       - name: Build Kernel
@@ -372,9 +343,14 @@ jobs:
 
           make a04f_defconfig || make a04_defconfig || make a05m_defconfig || make defconfig
           
-          # إعدادات الحزم النهائية داخل .config
+          # فرض إيقاف الحمايات في الإعداد النهائي
           sed -i 's/CONFIG_IKHEADERS=y/# CONFIG_IKHEADERS is not set/g' .config || true
+          sed -i 's/CONFIG_SECURITY_DEFEX=y/# CONFIG_SECURITY_DEFEX is not set/g' .config || true
+          sed -i 's/CONFIG_PROCA=y/# CONFIG_PROCA is not set/g' .config || true
+          
           echo "CONFIG_IKHEADERS=n" >> .config
+          echo "CONFIG_SECURITY_DEFEX=n" >> .config
+          echo "CONFIG_PROCA=n" >> .config
 
           sed -i 's/# CONFIG_KALLSYMS is not set/CONFIG_KALLSYMS=y/g' .config || true
           sed -i 's/# CONFIG_KALLSYMS_ALL is not set/CONFIG_KALLSYMS_ALL=y/g' .config || true
@@ -395,11 +371,11 @@ jobs:
           sed -i 's/kernel.string=.*/kernel.string=ReSukiSU Kernel for Samsung A04f/g' anykernel.sh || true
           sed -i 's/ExampleKernel by osm0sis @ xda-developers/ReSukiSU Kernel/g' anykernel.sh || true
 
-          zip -r9 "../ReSukiSU-Kernel-Samsung-A04f.zip" * -x .git README.md *placeholder
+          zip -r9 "../ReSukiSU-Kernel-Samsung-A04f-Fixed.zip" * -x .git README.md *placeholder
           cd ..
 
       - name: Upload Kernel Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ReSukiSU-Kernel-Samsung-A04f
-          path: ReSukiSU-Kernel-Samsung-A04f.zip
+          name: ReSukiSU-Kernel-Samsung-A04f-Fixed
+          path: ReSukiSU-Kernel-Samsung-A04f-Fixed.zip
