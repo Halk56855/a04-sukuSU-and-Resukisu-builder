@@ -118,19 +118,19 @@ jobs:
                       fair_c = f'#include "{rel_hdr}"\n' + fair_c
                       print(f"Included header {header_found} in fair.c")
                   else:
-                      stub = """
-/* Auto-fix stub for perf_order_domain */
-#include <linux/cpumask.h>
-#include <linux/list.h>
-#ifndef STRUCT_PERF_ORDER_DOMAIN_STUB
-#define STRUCT_PERF_ORDER_DOMAIN_STUB
-struct perf_order_domain {
-	struct list_head link;
-	struct cpumask possible_cpus;
-};
-static LIST_HEAD(perf_order_domains);
-#endif
-"""
+                      stub = (
+                          "/* Auto-fix stub for perf_order_domain */\n"
+                          "#include <linux/cpumask.h>\n"
+                          "#include <linux/list.h>\n"
+                          "#ifndef STRUCT_PERF_ORDER_DOMAIN_STUB\n"
+                          "#define STRUCT_PERF_ORDER_DOMAIN_STUB\n"
+                          "struct perf_order_domain {\n"
+                          "    struct list_head link;\n"
+                          "    struct cpumask possible_cpus;\n"
+                          "};\n"
+                          "static LIST_HEAD(perf_order_domains);\n"
+                          "#endif\n"
+                      )
                       fair_c = stub + fair_c
                       print("Stubbed perf_order_domain safely in fair.c")
 
