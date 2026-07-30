@@ -1,4 +1,4 @@
-name: Ultimate Secure & Self-Healing ReSukiSU Kernel Build
+name: Ultimate ReSukiSU & SUSFS Kernel Build for Samsung A04
 
 on:
   workflow_dispatch:
@@ -28,12 +28,21 @@ jobs:
           git clone https://github.com/kdrag0n/proton-clang.git toolchain/clang/host/linux-x86/clang-r383902 --depth=1
           echo "$GITHUB_WORKSPACE/toolchain/clang/host/linux-x86/clang-r383902/bin" >> $GITHUB_PATH
 
-      - name: Clean & Integrate ReSukiSU Automatically
+      - name: Integrate ReSukiSU and SUSFS
         run: |
           rm -rf kernel/ksu drivers/kernelsu
+          
+          # 1. دمج ReSukiSU الأساسي
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
 
-          # تعطيل حزم kheaders لمنع أخطاء التجميع
+          # 2. جلب ودمج حزمة SUSFS المتوافقة مع النواة (إصدار 4.19)
+          git clone https://github.com/SimplicityH/kernel_patches.git --depth=1 -b 4.19 susfs_patches || true
+          if [ -d "susfs_patches/50_susfs_4.19" ]; then
+            cp -r susfs_patches/50_susfs_4.19/fs/* fs/ 2>/dev/null || true
+            cp -r susfs_patches/50_susfs_4.19/include/* include/ 2>/dev/null || true
+          fi
+
+          # تعطيل kheaders لمنع أخطاء البناء
           if [ -f "kernel/gen_kheaders.sh" ]; then
             echo "#!/bin/sh" > kernel/gen_kheaders.sh
             echo "exit 0" >> kernel/gen_kheaders.sh
@@ -48,15 +57,13 @@ jobs:
             ln -sf . security/selinux/ss
           fi
 
-      - name: Smart Self-Healing & Auto-Fix Engine (Python)
+      - name: Smart Hooks & SUSFS Auto-Patching Engine
         run: |
-          cat << 'PYEOF' > smart_healing_engine.py
+          cat << 'PYEOF' > susfs_resuki_engine.py
           import os
           import re
 
-          print("[-] Starting Smart Self-Healing Engine...")
-
-          # 1. إصلاح SELinux الفعال
+          # 1. إصلاح SELinux
           sel_path = "security/selinux/selinuxfs.c"
           if os.path.exists(sel_path):
               with open(sel_path, "r") as f:
@@ -65,10 +72,8 @@ jobs:
                   content = "#include <linux/export.h>\n" + content + "\n#ifdef CONFIG_SECURITY_SELINUX\nextern const struct file_operations sel_handle_status_ops;\nEXPORT_SYMBOL(sel_handle_status_ops);\n#endif\n"
                   with open(sel_path, "w") as f:
                       f.write(content)
-                  print("[+] SELinux status symbols fixed successfully.")
 
-          # 2. حقن وتصحيح دوال النظام بأمان تآم (Hooks Auto-Patching)
-          # execveat hook
+          # 2. حقن Manual Hooks و SUSFS Hooks في fs/open.c و fs/exec.c و kernel/sys.c
           exec_path = "fs/exec.c"
           if os.path.exists(exec_path):
               with open(exec_path, "r") as f:
@@ -81,9 +86,7 @@ jobs:
                       exec_c = re.sub(r"(static\s+int\s+do_execveat_common\s*\([^)]*\)\s*\{)", r"\1" + hook, exec_c, count=1)
                   with open(exec_path, "w") as f:
                       f.write(exec_c)
-                  print("[+] execveat hook patched safely.")
 
-          # setresuid hook
           sys_path = "kernel/sys.c"
           if os.path.exists(sys_path):
               with open(sys_path, "r") as f:
@@ -96,19 +99,13 @@ jobs:
                       sys_c = re.sub(r"(SYSCALL_DEFINE3\s*\(\s*setresuid\s*,[^)]*\)\s*\{)", r"\1" + hook, sys_c, count=1)
                   with open(sys_path, "w") as f:
                       f.write(sys_c)
-                  print("[+] setresuid hook patched safely.")
 
-          # faccessat hook (معالجة مؤشرات الذاكرة بدقة لتفادي Kernel Panic)
           open_path = "fs/open.c"
           if os.path.exists(open_path):
               with open(open_path, "r") as f:
                   open_c = f.read()
               
-              open_c = re.sub(r"\n#ifdef CONFIG_KSU\nextern int ksu_handle_faccessat.*?\n#endif\n", "", open_c, flags=re.DOTALL)
-              open_c = re.sub(r"\n#ifdef CONFIG_KSU\n\tksu_handle_faccessat.*?\n#endif\n", "", open_c, flags=re.DOTALL)
-
               decl = "\n#ifdef CONFIG_KSU\nextern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif\n"
-              
               if "do_faccessat" in open_c:
                   m = re.search(r"(long|int)\s+do_faccessat\s*\(([^)]*)\)", open_c)
                   if m and "flags" in m.group(2):
@@ -119,22 +116,19 @@ jobs:
                   open_c = open_c.replace("long do_faccessat", decl + "long do_faccessat", 1)
                   open_c = open_c.replace("int do_faccessat", decl + "int do_faccessat", 1)
                   open_c = re.sub(r"((?:long|int)\s+do_faccessat\s*\([^)]*\)\s*\{)", r"\1" + hook, open_c, count=1)
-
               with open(open_path, "w") as f:
                   f.write(open_c)
-              print("[+] faccessat hook sanitized and optimized.")
           PYEOF
-          python3 smart_healing_engine.py
+          python3 susfs_resuki_engine.py
 
-      - name: Fix MediaTek Component Headers
+      - name: Fix MediaTek Headers
         run: |
           find drivers/misc/mediatek/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@#include <dbgtop.h>@#include "dbgtop.h"@g' {} + 2>/dev/null || true
-          find drivers/pinctrl/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's@<../../gpio/gpiolib.h>@"../../gpio/gpiolib.h"@g' {} + 2>/dev/null || true
           if [ -d "security/defex" ]; then
             echo "obj-y :=" > security/defex/Makefile 2>/dev/null || true
           fi
 
-      - name: Secure & Optimized Kernel Compilation
+      - name: Compile Kernel with ReSukiSU & SUSFS Enabled
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -142,51 +136,38 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-          EXTRA_FLAGS="-w -O2 -fpermissive -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -I$(pwd) -I. \
-          -I$(pwd)/security/selinux \
-          -I$(pwd)/drivers/staging/android \
-          -I$(pwd)/drivers/misc/mediatek/include \
-          -I$(pwd)/drivers/misc/mediatek/include/mt-plat"
+          EXTRA_FLAGS="-w -O2 -fpermissive -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KSU_SUSFS=1 -I$(pwd) -I."
 
           make a04f_defconfig || make defconfig
 
-          # تطبيق خيارات الحماية والأمان المطلق وإلغاء الثغرات وإعادة التشغيل
+          # تفعيل متغيرات ReSukiSU و SUSFS بدقة تامة بناءً على التوثيق
           echo "CONFIG_KALLSYMS=y" >> .config
           echo "CONFIG_KALLSYMS_ALL=y" >> .config
           echo "CONFIG_KSU=y" >> .config
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> .config
           echo "CONFIG_KSU_TAMPER_SYS_CALL=y" >> .config
           echo "CONFIG_KSU_SELINUX_HIDE=y" >> .config
+          echo "CONFIG_KSU_SUSFS=y" >> .config
           echo "CONFIG_IKHEADERS=n" >> .config
 
           sed -i 's/CONFIG_SECURITY_DEFEX=y/CONFIG_SECURITY_DEFEX=n/g' .config || true
           sed -i 's/CONFIG_PROCA=y/CONFIG_PROCA=n/g' .config || true
           sed -i 's/CONFIG_FIVE=y/CONFIG_FIVE=n/g' .config || true
-          sed -i 's/CONFIG_SEC_RESTRICT_FORK=y/CONFIG_SEC_RESTRICT_FORK=n/g' .config || true
-          sed -i 's/CONFIG_SEC_RESTRICT_SETUID=y/CONFIG_SEC_RESTRICT_SETUID=n/g' .config || true
 
           make olddefconfig
-
-          # بناء النواة بكفاءة وثبات تام
           make -j$(nproc) KCFLAGS="$EXTRA_FLAGS" WERROR=0 HOSTCC=gcc HOSTCXX=g++
 
-      - name: Package Secure AnyKernel3
+      - name: Package AnyKernel3
         run: |
           git clone https://github.com/DaniTheSillyFem/AnyKernel3-a04.git --depth=1 AnyKernel3
           cp arch/arm64/boot/Image AnyKernel3/
           cd AnyKernel3
-          sed -i 's/kernel.string=.*/kernel.string=Secure ReSukiSU Auto-Healed Kernel (Samsung A04)/g' anykernel.sh || true
-          zip -r9 "../ReSukiSU-Secure-Kernel-A04.zip" * -x .git README.md *placeholder
+          sed -i 's/kernel.string=.*/kernel.string=ReSukiSU + SUSFS Stable Kernel (Samsung A04)/g' anykernel.sh || true
+          zip -r9 "../ReSukiSU-SUSFS-Kernel-A04.zip" * -x .git README.md *placeholder
           cd ..
 
-      - name: Upload Secure Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ReSukiSU-Secure-Kernel-A04
-          path: ReSukiSU-Secure-Kernel-A04.zip
-
-      - name: Upload Kernel Zip Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ReSukiSU-Kernel-GSI-A04
-          path: ReSukiSU-Kernel-GSI-A04.zip
+          name: ReSukiSU-SUSFS-Kernel-A04
+          path: ReSukiSU-SUSFS-Kernel-A04.zip
