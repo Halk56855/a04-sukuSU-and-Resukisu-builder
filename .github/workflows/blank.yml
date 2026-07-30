@@ -10,6 +10,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          ref: latest-B
 
       - name: Install System Dependencies
         run: |
@@ -141,7 +143,7 @@ jobs:
 
           EXTRA_FLAGS="-w -O2 -fpermissive -Dion_phys_addr_t=phys_addr_t -DCONFIG_KSU_MANUAL_HOOK=1 -DCONFIG_KSU_TAMPER_SYS_CALL=1 -DCONFIG_KSU_SELINUX_HIDE=1 -DCONFIG_KSU_SUSFS=1 -I$(pwd) -I."
 
-          make a04f_defconfig || make defconfig
+          make defconfig
 
           echo "CONFIG_KALLSYMS=y" >> .config
           echo "CONFIG_KALLSYMS_ALL=y" >> .config
