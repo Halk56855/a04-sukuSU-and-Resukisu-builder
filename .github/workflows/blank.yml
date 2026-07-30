@@ -8,9 +8,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
+          repository: rsuntk-oss/android_kernel_samsung_a04m
           ref: latest-B
 
       - name: Install System Dependencies
