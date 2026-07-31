@@ -11,6 +11,9 @@ jobs:
       - name: Checkout Workflow Repository
         uses: actions/checkout@v4
 
+      - name: Save Workspace Root Path
+        run: echo "ROOT_DIR=$PWD" >> $GITHUB_ENV
+
       - name: Clone Kernel Source
         run: |
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04.git kernel_source
@@ -43,20 +46,26 @@ jobs:
             cp -rf resukisu_repo/kernel/* drivers/ksu/
           fi
 
-          # 2. إضافة تضمين KSU في init/Kconfig بشكل صحيح وآمن
-          if [ -f "init/Kconfig" ]; then
-            if ! grep -q "drivers/ksu/Kconfig" init/Kconfig; then
-              sed -i '/endmenu/i source "drivers/ksu/Kconfig"' init/Kconfig || true
+          # 2. إضافة تضمين KSU في drivers/Kconfig بشكل آمن
+          if [ -f "drivers/Kconfig" ]; then
+            if ! grep -q "drivers/ksu/Kconfig" drivers/Kconfig; then
+              sed -i '$i source "drivers/ksu/Kconfig"' drivers/Kconfig || true
             fi
           fi
 
-          # 3. سحب وتطبيق رقعة ReSukiSU لنواة 4.19 مع تجاهل التعارضات
-          git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU_Patches.git patches_repo
-          if [ -f "patches_repo/scope-minimized/kernel-4.19.patch" ]; then
-            git apply --reject --whitespace=fix patches_repo/scope-minimized/kernel-4.19.patch || true
+          # 3. إضافة Makefile الداخلي لـ ksu
+          if [ ! -f "drivers/ksu/Makefile" ]; then
+            echo "obj-\$(CONFIG_KSU) += ksu.o" > drivers/ksu/Makefile
+            echo "ksu-y := $(subst drivers/ksu/,,$(wildcard drivers/ksu/*.c))" >> drivers/ksu/Makefile
           fi
 
-          # 4. دمج SuFS لنواة 4.19
+          # 4. سحب وتطبيق رقعة ReSukiSU باستخدام --3way لتجنب التعارضات
+          git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU_Patches.git patches_repo
+          if [ -f "patches_repo/scope-minimized/kernel-4.19.patch" ]; then
+            git apply --3way --whitespace=fix patches_repo/scope-minimized/kernel-4.19.patch || true
+          fi
+
+          # 5. دمج SuFS لنواة 4.19 مع التعامل المرن مع الرقع
           git clone --depth=1 -b kernel-4.19 https://gitlab.com/simonpunk/susfs4ksu.git susfs_repo
           if [ -d "susfs_repo/kernel_patches" ]; then
             cp -f susfs_repo/kernel_patches/fs/* fs/ || true
@@ -64,9 +73,12 @@ jobs:
             
             PATCH_FILE=$(find susfs_repo/kernel_patches -name "*.patch" | head -n 1)
             if [ -n "$PATCH_FILE" ]; then
-              git apply --reject --whitespace=fix "$PATCH_FILE" || true
+              git apply --3way --whitespace=fix "$PATCH_FILE" || true
             fi
           fi
+
+          # تنظيف ملفات الرفض الناتجة عن الرقع لمنع فشل البناء
+          find . -name "*.rej" -delete || true
 
       - name: Clean MediaTek Kconfig Conflicts
         run: |
@@ -95,7 +107,7 @@ jobs:
           cd kernel_source
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH=$PWD/../toolchain/clang/host/linux-x86/clang-r383902/bin:$PATH
+          export PATH=${{ env.ROOT_DIR }}/toolchain/clang/host/linux-x86/clang-r383902/bin:$PATH
           export CC=clang
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-android-
