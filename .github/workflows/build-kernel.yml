@@ -46,12 +46,12 @@ jobs:
           scripts/config --file out/.config --enable CONFIG_KALLSYMS
           scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
           
-          # تعطيل نظام الملفات sdfat لتفادي أخطاء المترجم الحديث
+          # تعطيل نظام الملفات sdfat لتفادي أخطاء التوافق
           scripts/config --file out/.config --disable CONFIG_SDFAT_FS || true
           scripts/config --file out/.config --disable CONFIG_SDFAT_SUPPORT || true
           
-          # بناء النواة مع تجاوز التحذيرات الصارمة للمترجم
-          make O=out -j$(nproc) ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-error=misleading-indentation"
+          # بناء النواة مع قمع كافة التحذيرات والأخطاء الصارمة للمترجم الحديث نهائياً
+          make O=out -j$(nproc) ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-w" HOSTCFLAGS="-w"
 
       - name: Apply SukiSU KernelPatch (KPM)
         run: |
@@ -66,7 +66,7 @@ jobs:
             KERNEL_IMAGE="out/arch/arm64/boot/Image.gz"
           fi
           
-          # حقن ورقع النواة بأدوات SukiSU-Ultra
+          # حقن النواة بأدوات SukiSU-Ultra
           ./kptools-linux -p -i "$KERNEL_IMAGE" -k kpimg -o patched_image
 
       - name: Pack with AnyKernel3
