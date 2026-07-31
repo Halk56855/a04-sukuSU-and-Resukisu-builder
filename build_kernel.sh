@@ -1,257 +1,326 @@
 #!/bin/bash
-set -e
-set -u
-set -o pipefail
+set -euopipefail
 
 # ==============================================================================
-# SukiSU-Ultra + SUSFS (Builtin Mode) Kernel Builder for Samsung Galaxy A04
-# Kernel Version: 4.19 (mt6765)
-# Packaging: AnyKernel3 Zip
+# KernelSU + SUSFS Builder for Samsung Galaxy A04 (SM-A045F)
+# Based on: rsuntk-oss/android_kernel_samsung_a04m (mt6765)
+# Kernel base: 4.19.191 | Clang: r383902b (12.0.5)
+# SUSFS: simonpunk/susfs4ksu (kernel-4.19 branch)
 # ==============================================================================
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib.sh
-source "${SCRIPT_DIR}/scripts/lib.sh"
 
 WORK_DIR="$(pwd)"
 KERNEL_DIR="${WORK_DIR}/kernel"
 OUTPUT_DIR="${WORK_DIR}/output"
 TOOLCHAIN_DIR="${WORK_DIR}/toolchains"
+SUSFS_DIR="${WORK_DIR}/susfs"
 JOBS=$(nproc --all 2>/dev/null || echo 4)
 
-# make wrapper carrying the shared kernel build options and toolchain.
-kmake() {
-    make -C "$KERNEL_DIR" O="$KERNEL_DIR/out" KCFLAGS=-w CONFIG_SECTION_MISMATCH_WARN_ONLY=y \
-        ARCH=arm64 CC="${CC}" CLANG_TRIPLE="${CLANG_TRIPLE}" CROSS_COMPILE="${CROSS_COMPILE}" "$@"
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+log()  { echo -e "${GREEN}[+]${NC} $1"; }
+warn() { echo -e "${YELLOW}[!]${NC} $1"; }
+err()  { echo -e "${RED}[x]${NC} $1"; exit 1; }
+
+# Helper to URL-encode paths for GitLab API
+encoded_src() {
+  local src="$1"
+  local out=""
+  local ch
+  local i=0
+  while [ $i -lt ${#src} ]; do
+    ch=$(printf '%s' "$src" | cut -c$((i+1)))
+    case "$ch" in
+      [a-zA-Z0-9]) out="${out}${ch}" ;;
+      *) out="${out}$(printf '%%%02X' "'${ch}")" ;;
+    esac
+    i=$((i+1))
+  done
+  printf '%s' "$out"
 }
 
+# ==============================================================================
+# Step 1: Download kernel source
+# ==============================================================================
 download_kernel_source() {
-    [ -f "$KERNEL_DIR/Makefile" ] && return
-    log "Cloning Samsung Galaxy A04 kernel source..."
+    if [ -f "$KERNEL_DIR/Makefile" ]; then
+        log "Kernel source already exists at $KERNEL_DIR"
+        return
+    fi
+    log "Cloning kernel source (rsuntk-oss/android_kernel_samsung_a04m)..."
     mkdir -p "$KERNEL_DIR"
-    clone_shallow https://github.com/rsuntk-oss/android_kernel_samsung_a04m.git "$KERNEL_DIR" latest-B \
-        || err "Failed to clone kernel source"
-    [ -f "$KERNEL_DIR/Makefile" ] || err "Kernel source clone did not produce a Makefile in $KERNEL_DIR"
+    git clone --depth=1 -b latest-B \
+        https://github.com/rsuntk-oss/android_kernel_samsung_a04m.git \
+        "$KERNEL_DIR" 2>&1 || err "Failed to clone kernel source"
+    log "Source cloned."
 }
 
+# ==============================================================================
+# Step 2: Setup toolchains (clang + GCC 4.9)
+# ==============================================================================
 setup_toolchains() {
-    log "Setting up toolchains (Clang & GCC)..."
+    log "Setting up toolchains..."
     mkdir -p "$TOOLCHAIN_DIR"
     cd "$TOOLCHAIN_DIR"
+
+    # Use mirrors from ravindu644/Android-Kernel-Tutorials releases
     local MIRROR_BASE=https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains
 
+    # --- Clang ---
     if [ ! -f "clang-r383902/bin/clang" ]; then
-        fetch_tar clang-r383902 "${MIRROR_BASE}/clang-r383902b.tar.gz" \
-            || err "Failed to download or extract Clang toolchain"
-        [ -x "clang-r383902/bin/clang" ] || err "Clang binary missing after extraction"
+        log "Downloading clang-r383902b (Clang 12.0.5)..."
+        mkdir -p clang-r383902
+        curl -L -o clang.tar.gz --connect-timeout 30 --retry 3 \
+            "${MIRROR_BASE}/clang-r383902b.tar.gz" || {
+            warn "Mirror failed, trying ravi's alternative..."
+            curl -L -o clang.tar.gz --connect-timeout 30 --retry 3 \
+                "${MIRROR_BASE}/clang-r383902.tar.gz" || {
+                err "Failed to download clang toolchain from all sources."
+            }
+        }
+        tar -xzf clang.tar.gz -C clang-r383902 2>/dev/null || err "Failed to extract clang"
+        rm -f clang.tar.gz
     fi
 
+    # --- GCC 4.9 aarch64 ---
     if [ ! -f "aarch64-linux-android-4.9/bin/aarch64-linux-androidkernel-ld" ]; then
-        fetch_tar gcc_temp \
-            "${MIRROR_BASE}/aarch64-linux-android-4.9.tar.gz" \
-            "${MIRROR_BASE}/aarch64-linux-android-4.9-Linux-5.4.tar.gz" \
-            || err "Failed to download or extract GCC toolchain"
-        local GCC_BIN_DIR
-        GCC_BIN_DIR=$(find gcc_temp -type d -name "bin" -path "*/aarch64-linux-android-4.9/bin" | head -1)
-        [ -n "$GCC_BIN_DIR" ] || err "Could not locate GCC bin directory in extracted toolchain"
+        log "Downloading GCC 4.9 (aarch64-linux-android)..."
+        curl -L -o gcc.tar.gz --connect-timeout 30 --retry 3 \
+            "${MIRROR_BASE}/aarch64-linux-android-4.9.tar.gz" || {
+            warn "Standard GCC tarball failed, trying Linux-5.4 variant..."
+            curl -L -o gcc.tar.gz --connect-timeout 30 --retry 3 \
+                "${MIRROR_BASE}/aarch64-linux-android-4.9-Linux-5.4.tar.gz" || {
+                err "Failed to download GCC toolchain."
+            }
+        }
+
+        mkdir -p gcc_temp
+        tar -xzf gcc.tar.gz -C gcc_temp 2>/dev/null || err "Failed to extract GCC"
+        rm -f gcc.tar.gz
+
+        local GCC_BIN_DIR=$(find gcc_temp -type d -name "bin" -path "*/aarch64-linux-android-4.9/bin" | head -1)
+        if [ -z "$GCC_BIN_DIR" ]; then
+            err "Could not find toolchain bin dir: $(find gcc_temp -type d -maxdepth 6 | head -10)"
+        fi
         mkdir -p aarch64-linux-android-4.9
         cp -r "$(dirname "$GCC_BIN_DIR")"/* aarch64-linux-android-4.9/
         rm -rf gcc_temp
+
         cd aarch64-linux-android-4.9/bin
         for f in aarch64-linux-android-*; do
-            [ -f "$f" ] && [ ! -e "${f/android-/androidkernel-}" ] && ln -sf "$f" "${f/android-/androidkernel-}"
+            if [ -f "$f" ] && [ ! -e "${f/android-/androidkernel-}" ]; then
+                ln -sf "$f" "${f/android-/androidkernel-}"
+            fi
         done
         cd ../..
-        [ -e "aarch64-linux-android-4.9/bin/aarch64-linux-androidkernel-ld" ] \
-            || err "GCC cross-compiler linker missing after setup"
+        log "Created aarch64-linux-androidkernel-* symlinks"
     fi
+
+    log "Toolchains ready."
 }
 
-apply_419_compat_patches() {
-    local dir="$1"
-    sed_c_h "$dir" 's/\baccess_ok(/access_ok(0, /g' \
-        || err "Failed to apply access_ok compatibility patch in ${dir}"
-    sed_c_h "$dir" 's/MODULE_IMPORT_NS/\/\//g' \
-        || err "Failed to apply MODULE_IMPORT_NS compatibility patch in ${dir}"
-    sed_c_h "$dir" 's|#include <linux/pgtable.h>|#include <linux/mm.h>|g' \
-        || err "Failed to apply pgtable.h compatibility patch in ${dir}"
-}
+# ==============================================================================
+# Step 3: Integrate SUSFS + KernelSU
+# ==============================================================================
+integrate_susfs() {
+    log "=== Integrating SUSFS + KernelSU ==="
+    cd "$KERNEL_DIR"
 
-patch_file_wrapper() {
-    local path="$1"
-    [ -f "$path" ] || return 0
-    log "Patching file_wrapper.c for Kernel 4.19 API..."
-    FILE_WRAPPER_PATH="$path" python3 -c '
-import os, re, sys
-path = os.environ["FILE_WRAPPER_PATH"]
-try:
-    with open(path, "r") as f:
-        code = f.read()
+    # Step 3a: Download SUSFS patches from GitLab
+    log "Downloading SUSFS 4.19 patches..."
+    mkdir -p "$SUSFS_DIR"
+    cd "$SUSFS_DIR"
 
-    if "<linux/version.h>" not in code:
-        code = "#include <linux/version.h>\n" + code
+    local GITLAB_API="https://gitlab.com/api/v4/projects/simonpunk%2Fsusfs4ksu/repository"
+    local SUSFS_REF="kernel-4.19"
 
-    code = re.sub(r"(\.iopoll\s*=)", r"// \1", code)
-    code = re.sub(r"(\.remap_file_range\s*=)", r"// \1", code)
-    code = re.sub(r"(\bREMAP_FILE_DEDUP\b)", r"0", code)
-    code = re.sub(r"(\bksu_wrapper_iopoll\b)", r"NULL", code)
-    code = re.sub(r"(\bksu_wrapper_remap_file_range\b)", r"NULL", code)
+    curl -L --connect-timeout 30 --retry 3 \
+        "${GITLAB_API}/files/kernel_patches%2F50_add_susfs_in_kernel-4.19.patch/raw?ref=${SUSFS_REF}" \
+        -o "50_add_susfs_in_kernel-4.19.patch" || warn "Failed to download main SUSFS patch"
 
-    with open(path, "w") as f:
-        f.write(code)
-except Exception as e:
-    sys.exit(f"Patch error: {e}")
-' || err "Failed to patch file_wrapper.c (${path})"
-}
+    local SUSFS_FILES=(
+        "kernel_patches/fs/susfs.c:fs/susfs.c"
+        "kernel_patches/fs/sus_su.c:fs/sus_su.c"
+        "kernel_patches/include/linux/susfs.h:include/linux/susfs.h"
+        "kernel_patches/include/linux/susfs_def.h:include/linux/susfs_def.h"
+    )
+    for entry in "${SUSFS_FILES[@]}"; do
+        local src="${entry%%:*}"
+        local dst="${entry#*:}"
+        local dir=$(dirname "$dst")
+        mkdir -p "$dir"
+        local encoded=$(encoded_src "$src")
+        curl -L --connect-timeout 30 --retry 3 \
+            "${GITLAB_API}/files/${encoded}/raw?ref=${SUSFS_REF}" \
+            -o "$dst" || warn "Failed to download $dst"
+    done
 
-integrate_susfs_and_sukisu() {
-    log "=== Integrating SUSFS & SukiSU-Ultra ==="
-    cd "$WORK_DIR"
-
-    # 1. تحميل رقع SUSFS الرسمية
-    if [ ! -d "susfs4ksu" ]; then
-        log "Cloning susfs4ksu repository..."
-        clone_shallow https://gitlab.com/simonpunk/susfs4ksu.git susfs4ksu
-    fi
+    # Download KernelSU/ directory from SUSFS
+    log "Downloading SUSFS Integration files..."
+    curl -L --connect-timeout 30 --retry 3 \
+        "${GITLAB_API}/files/kernel_patches%2FKernelSU%2Fsucompat.c/raw?ref=${SUSFS_REF}" \
+        -o "KernelSU/sucompat.c" 2>/dev/null || true
 
     cd "$KERNEL_DIR"
 
-    # 2. إصلاح وحدة الاتصال لمعالجات MediaTek
+    # Step 3b: Apply SUSFS kernel patch
+    if [ -f "${SUSFS_DIR}/50_add_susfs_in_kernel-4.19.patch" ]; then
+        log "Applying SUSFS kernel patch (fuzz=3, tolerant)..."
+        patch -p1 --forward --fuzz=3 --no-backup-if-mismatch \
+            < "${SUSFS_DIR}/50_add_susfs_in_kernel-4.19.patch" 2>&1 || true
+        
+        # Fix compilation error in fs/notify/fdinfo.c for some 4.19 kernels
+        if [ -f fs/notify/fdinfo.c ]; then
+            log "Fixing fs/notify/fdinfo.c patch artifacts..."
+            # Fix label followed by declaration error
+            sed -i 's/out_seq_printf:/out_seq_printf:;/g' fs/notify/fdinfo.c
+            # Define missing inotify_mark_user_mask macro if used but not defined
+            if grep -q "inotify_mark_user_mask" fs/notify/fdinfo.c; then
+                if ! grep -q "#define inotify_mark_user_mask" fs/notify/fdinfo.c; then
+                    sed -i '/#include <linux\/exportfs.h>/a #define inotify_mark_user_mask(mark) (mark->mask \& IN_ALL_EVENTS)' fs/notify/fdinfo.c
+                fi
+            fi
+        fi
+
+        local REJECTS=$(find . -name "*.rej" 2>/dev/null | wc -l)
+        if [ $REJECTS -gt 0 ]; then
+            warn "SUSFS patch had ${REJECTS} rejected hunk(s)."
+        else
+            log "SUSFS patch applied cleanly!"
+        fi
+    fi
+
+    # Step 3c: Copy SUSFS source files directly
+    log "Copying SUSFS source files to kernel tree..."
+    [ -f "${SUSFS_DIR}/fs/susfs.c" ] && cp "${SUSFS_DIR}/fs/susfs.c" "fs/susfs.c" && chmod 644 "fs/susfs.c"
+    [ -f "${SUSFS_DIR}/fs/sus_su.c" ] && cp "${SUSFS_DIR}/fs/sus_su.c" "fs/sus_su.c" && chmod 644 "fs/sus_su.c"
+    [ -f "${SUSFS_DIR}/include/linux/susfs.h" ] && cp "${SUSFS_DIR}/include/linux/susfs.h" "include/linux/susfs.h" && chmod 644 "include/linux/susfs.h"
+    [ -f "${SUSFS_DIR}/include/linux/susfs_def.h" ] && cp "${SUSFS_DIR}/include/linux/susfs_def.h" "include/linux/susfs_def.h" && chmod 644 "include/linux/susfs_def.h"
+
+    # Step 3d: Update fs/Makefile
+    log "Ensuring fs/Makefile has SUSFS entry..."
+    if ! grep -q "susfs.o" "fs/Makefile"; then
+        sed -i '/^obj-y :=.*nsfs.o/a obj-$(CONFIG_KSU_SUSFS) += susfs.o' "fs/Makefile" 2>/dev/null || true
+    fi
+
+    # Step 3e: Integrate KernelSU
+    log "Integrating KernelSU (susfs-rksu-master branch)..."
+    cd "$KERNEL_DIR"
     if [ -d "drivers/misc/mediatek/connectivity" ]; then
+        log "Replacing mtk connectivity module (WiFi fix)..."
         rm -rf drivers/misc/mediatek/connectivity
-        clone_shallow https://github.com/rsuntkOrgs/mtk_connectivity_module.git drivers/misc/mediatek/connectivity staging-4.14 \
-            || err "Failed to clone MediaTek connectivity module (original module was removed)"
+        git clone --depth=1 https://github.com/rsuntkOrgs/mtk_connectivity_module.git \
+            -b staging-4.14 drivers/misc/mediatek/connectivity 2>/dev/null || true
         rm -rf drivers/misc/mediatek/connectivity/.git
     fi
 
-    # 3. تنظيف أي مجلد قديم لـ kernelsu
-    rm -rf drivers/kernelsu
-
-    # 4. تشغيل أمر الدمج الرسمي لـ SukiSU-Ultra
-    log "Running SukiSU-Ultra official setup script..."
-    # Avoid piping curl directly into a shell: a dropped/partial download can
-    # execute truncated commands. Download to a file first, then run it so the
-    # fetched script is captured and inspectable.
-    local SETUP_SCRIPT="${WORK_DIR}/sukisu_setup.sh"
-    curl -fLSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" -o "$SETUP_SCRIPT" \
-        || err "Failed to download SukiSU-Ultra setup script"
-    bash "$SETUP_SCRIPT" builtin || err "SukiSU-Ultra setup script failed"
-    [ -d "drivers/kernelsu" ] || err "SukiSU-Ultra setup did not create drivers/kernelsu"
-
-    # 5. نسخ ملفات الترويسة الخاصة بـ SUSFS إلى مجلد include النواة لحل خطأ susfs_def.h
-    log "Copying SUSFS header files to kernel include directory..."
-    mkdir -p include/linux
-    local SUSFS_INC="${WORK_DIR}/susfs4ksu/kernel_patches/include/linux"
-    for h in susfs.h susfs_def.h; do
-        if [ -f "${SUSFS_INC}/${h}" ]; then
-            cp -f "${SUSFS_INC}/${h}" include/linux/ || err "Failed to copy SUSFS header ${h}"
-        else
-            warn "SUSFS header ${h} not found at ${SUSFS_INC}; skipping"
+    log "Running KernelSU setup (susfs-rksu-master)..."
+    curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/susfs-rksu-master/kernel/setup.sh" \
+        | bash -s latest 2>&1 || {
+        warn "Auto setup failed, trying manual clone..."
+        if [ ! -d "KernelSU" ]; then
+            local KSU_TMP="${WORK_DIR}/ksu_tmp"
+            mkdir -p "$KSU_TMP"
+            git clone --depth=1 -b susfs-rksu-master \
+                https://github.com/rsuntk/KernelSU.git "$KSU_TMP" 2>/dev/null || err "Failed to clone KernelSU!"
+            cp -r "$KSU_TMP" "$KERNEL_DIR/KernelSU"
+            ln -sf "../../KernelSU/kernel" "$KERNEL_DIR/drivers/kernelsu" 2>/dev/null || true
+            rm -rf "$KSU_TMP"
         fi
-    done
+    }
 
-    # 6. تطبيق رقع SUSFS على النواة إذا توفرت الرقعة المناسبة للإصدار 4.19
-    local SUSFS_PATCH="${WORK_DIR}/susfs4ksu/kernel_patches/50_add_susfs_in_v4.19.patch"
-    if [ -f "$SUSFS_PATCH" ]; then
-        log "Applying SUSFS patch for Kernel 4.19..."
-        patch -p1 < "$SUSFS_PATCH" || err "Failed to apply SUSFS patch for Kernel 4.19"
-    else
-        warn "SUSFS 4.19 patch not found at ${SUSFS_PATCH}; skipping"
+    if [ ! -f "KernelSU/kernel/ksu.h" ] && [ ! -L "drivers/kernelsu" ]; then
+        err "KernelSU integration failed!"
     fi
-
-    # 7. إصلاحات التوافقية لنواة Linux 4.19
-    log "Applying Kernel 4.19 compatibility patches..."
-    apply_419_compat_patches drivers/kernelsu
-
-    # 8. معالجة ملف file_wrapper.c لنواة 4.19
-    patch_file_wrapper "drivers/kernelsu/infra/file_wrapper.c"
+    log "SUSFS + KernelSU Integration complete."
 }
 
+# ==============================================================================
+# Step 4: Configure kernel
+# ==============================================================================
 configure_kernel() {
-    log "Configuring kernel build options..."
+    log "Configuring kernel..."
     cd "$KERNEL_DIR"
     export ARCH=arm64
     export CROSS_COMPILE="${TOOLCHAIN_DIR}/aarch64-linux-android-4.9/bin/aarch64-linux-androidkernel-"
     export CC="${TOOLCHAIN_DIR}/clang-r383902/bin/clang"
     export CLANG_TRIPLE="aarch64-linux-gnu-"
 
-    kmake a04_defconfig
+    local MAKE_OPTS=( -C "$(pwd)" O="$(pwd)/out" KCFLAGS=-w CONFIG_SECTION_MISMATCH_WARN_ONLY=y ARCH=arm64 CC="${CC}" CLANG_TRIPLE="${CLANG_TRIPLE}" CROSS_COMPILE="${CROSS_COMPILE}" )
 
-    # تفعيل الخيارات المطلوبة
+    log "Using a04_defconfig..."
+    make "${MAKE_OPTS[@]}" a04_defconfig || err "Defconfig failed"
+
+    log "Enabling KernelSU..."
     scripts/config --file out/.config --enable CONFIG_KSU
-    scripts/config --file out/.config --enable CONFIG_KPM
-    scripts/config --file out/.config --enable CONFIG_KALLSYMS
-    scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
-    scripts/config --file out/.config --enable CONFIG_OVERLAY_FS
-    scripts/config --file out/.config --enable CONFIG_KSU_SUSFS || true
+    scripts/config --file out/.config --enable CONFIG_KSU_MANUAL_HOOK
 
-    # تعطيل حماية سامسونج
+    log "Enabling SUSFS hiding features..."
+    for opt in KSU_SUSFS KSU_SUSFS_SUS_PATH KSU_SUSFS_SUS_MOUNT KSU_SUSFS_SUS_KSTAT KSU_SUSFS_OPEN_REDIRECT KSU_SUSFS_SUS_SU SPOOF_UNAME KSU_SUSFS_ENFORCE_SUSFS KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS KSU_SUSFS_SUS_OVERLAYFS; do
+        scripts/config --file out/.config --enable "CONFIG_${opt}" 2>/dev/null || true
+    done
+
+    log "Disabling Samsung security modules..."
     for opt in SECURITY_DEFEX PROCA FIVE UH RKP_KDP SEC_RESTRICT_ROOTING SEC_RESTRICT_SETUID SEC_RESTRICT_FORK SEC_RESTRICT_ROOTING_LOG KNOX_KAP TIMA TIMA_LKMAUTH TIMA_LKM_BLOCK TIMA_LKMAUTH_CODE_PROT INTEGRITY INTEGRITY_SIGNATURE INTEGRITY_ASYMMETRIC_KEYS INTEGRITY_TRUSTED_KEYRING INTEGRITY_AUDIT DM_VERITY; do
         scripts/config --file out/.config --disable "CONFIG_${opt}" 2>/dev/null || true
     done
 
     scripts/config --file out/.config --enable CONFIG_SECURITY_SELINUX_DEVELOP || true
     scripts/config --file out/.config --disable CONFIG_SECURITY_SELINUX_ALWAYS_ENFORCE || true
-    scripts/config --file out/.config --set-str CONFIG_LOCALVERSION "-SukiSU-SUSFS-A04"
+    scripts/config --file out/.config --disable CONFIG_KSU_DEBUG 2>/dev/null || true
+    scripts/config --file out/.config --set-str CONFIG_LOCALVERSION "-th-v2"
     scripts/config --file out/.config --disable CONFIG_LOCALVERSION_AUTO
 
-    kmake olddefconfig || err "Failed to finalize kernel config (olddefconfig)"
+    make "${MAKE_OPTS[@]}" olddefconfig 2>/dev/null || true
+    log "Kernel configured."
 }
 
+# ==============================================================================
+# Step 5: Build the kernel
+# ==============================================================================
 build_kernel() {
-    log "Building kernel with ${JOBS} threads..."
+    log "Building kernel with ${JOBS} jobs..."
     cd "$KERNEL_DIR"
+    local MANAGER_PKG="${KSU_MANAGER_PACKAGE:-com.wssyncmldm}"
+    local MAKE_OPTS=( -C "$(pwd)" O="$(pwd)/out" KCFLAGS=-w CONFIG_SECTION_MISMATCH_WARN_ONLY=y ARCH=arm64 CC="${CC}" CLANG_TRIPLE="${CLANG_TRIPLE}" CROSS_COMPILE="${CROSS_COMPILE}" KSU_MANAGER_PACKAGE="${MANAGER_PKG}" )
 
-    kmake -j"${JOBS}" 2>&1 | tee "${OUTPUT_DIR}/build.log" || kmake -j1 2>&1 | tee -a "${OUTPUT_DIR}/build.log"
+    make "${MAKE_OPTS[@]}" -j"${JOBS}" 2>&1 | tee "${OUTPUT_DIR}/build.log" || {
+        warn "First build attempt failed, retrying with LLVM_IAS=1..."
+        make "${MAKE_OPTS[@]}" -j"${JOBS}" LLVM_IAS=1 2>&1 | tee -a "${OUTPUT_DIR}/build.log" || err "Build failed!"
+    }
+
     if [ -f "out/arch/arm64/boot/Image" ]; then
-        cp "out/arch/arm64/boot/Image" "arch/arm64/boot/Image" || err "Failed to copy built kernel Image"
+        cp "out/arch/arm64/boot/Image" "arch/arm64/boot/Image"
+        log "Build successful!"
     else
-        err "Kernel Image build failed!"
+        err "No kernel Image found!"
     fi
 }
 
+# ==============================================================================
+# Step 6: Package outputs
+# ==============================================================================
 package_kernel() {
-    log "Packaging AnyKernel3 zip..."
+    log "Packaging outputs..."
     mkdir -p "$OUTPUT_DIR"
-    cd "$WORK_DIR"
-    rm -rf AnyKernel3
-    clone_shallow https://github.com/osm0sis/AnyKernel3.git AnyKernel3 \
-        || err "Failed to clone AnyKernel3"
-
-    local img_copied=0
-    for img in "out/arch/arm64/boot/Image.gz-dtb" "out/arch/arm64/boot/Image.gz" "out/arch/arm64/boot/Image"; do
-        if [ -f "${KERNEL_DIR}/${img}" ]; then
-            cp "${KERNEL_DIR}/${img}" AnyKernel3/ || err "Failed to copy ${img} into AnyKernel3"
-            img_copied=1
-            break
-        fi
-    done
-    [ "$img_copied" -eq 1 ] || err "No kernel image found to package"
-
-    cd AnyKernel3
-    sed -i 's/block=auto/block=\/dev\/block\/by-name\/boot/g' anykernel.sh \
-        || err "Failed to configure anykernel.sh (block)"
-    sed -i 's/is_slot_device=1/is_slot_device=0/g' anykernel.sh \
-        || err "Failed to configure anykernel.sh (is_slot_device)"
-
-    ZIP_NAME="SukiSU-SUSFS-A04-Kernel.zip"
-    # shellcheck disable=SC2035  # intentional glob of packaging contents and exclude patterns
-    zip -r9 "${OUTPUT_DIR}/${ZIP_NAME}" * -x .git README.md *placeholder \
-        || err "Failed to create AnyKernel3 zip package"
-    log "Created package: ${OUTPUT_DIR}/${ZIP_NAME}"
+    cp "${KERNEL_DIR}/out/arch/arm64/boot/Image" "$OUTPUT_DIR/Image"
+    cd "$OUTPUT_DIR"
+    tar -cvf "KernelSU_A04_boot.tar" "Image" 2>/dev/null
+    if command -v md5sum &>/dev/null; then
+        md5sum "KernelSU_A04_boot.tar" | cut -d' ' -f1 | tr -d '\n' >> "KernelSU_A04_boot.tar"
+        mv "KernelSU_A04_boot.tar" "KernelSU_A04_boot.tar.md5"
+        log "Created: KernelSU_A04_boot.tar.md5"
+    fi
 }
 
 main() {
     mkdir -p "$OUTPUT_DIR"
+    log "=== KernelSU + SUSFS Builder for SM-A045F ==="
     download_kernel_source
     setup_toolchains
-    integrate_susfs_and_sukisu
+    integrate_susfs
     configure_kernel
     build_kernel
     package_kernel
+    log "BUILD COMPLETE"
 }
 
-# Only run when executed directly, so the functions can be sourced by tests.
-if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-    main "$@"
-fi
+main "$@"
