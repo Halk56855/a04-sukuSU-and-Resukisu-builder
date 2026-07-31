@@ -13,8 +13,8 @@ jobs:
 
       - name: Clone Kernel Source
         run: |
-          # تأكد من أن الرابط أدناه صحيح ومستودع النواة عام (Public)
-          git clone --depth=1 https://github.com/Halk5685/samsung_a04_kernel.git kernel_source
+          # سحب شيفرة النواة الصحيحة والخاصة بهاتف Galaxy A04
+          git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04.git kernel_source
 
       - name: Install Build Dependencies
         run: |
@@ -28,6 +28,8 @@ jobs:
       - name: Inject ReSukiSU
         run: |
           cd kernel_source
+          
+          # استنساخ مستودع ReSukiSU ودمجه داخل النواة
           git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU.git resukisu_repo
           
           if [ -d "drivers" ]; then
