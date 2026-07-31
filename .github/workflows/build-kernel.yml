@@ -33,7 +33,7 @@ jobs:
           # تحميل GCC 4.9
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain-gcc64 || true
           
-          # استبدال مستودع LLVM المصدري بمترجم Clang جاهز ومضبوط لنظام أندرويد
+          # تحميل مترجم Clang جاهز ومضبوط لنظام أندرويد
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r416183b.git clang-llvm || true
 
       - name: Configure and Compile Kernel
@@ -49,8 +49,8 @@ jobs:
           scripts/config --file out/.config --enable CONFIG_KALLSYMS
           scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
           
-          # بناء الكيرنل الخام باستخدام Clang
-          make O=out -j$(nproc) ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android-
+          # بناء الكيرنل مع تجاوز التحذيرات الصارمة للمترجم الحديث
+          make O=out -j$(nproc) ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion"
 
       - name: Apply SukiSU KernelPatch (KPM)
         run: |
