@@ -39,19 +39,19 @@ jobs:
           export SUBARCH=arm64
           export PATH="${{ github.workspace }}/clang-llvm/bin:${{ github.workspace }}/toolchain-gcc64/bin:$PATH"
           
-          # إعداد الـ defconfig الخاص بالمستودع
+          # إعداد ملف التهيئة الخاص بالمستودع
           make O=out mtk_defconfig || make O=out a04_defconfig || true
           
           # تفعيل المتطلبات الإجبارية لـ KernelPatch
           scripts/config --file out/.config --enable CONFIG_KALLSYMS
           scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
           
-          # تعطيل نظام الملفات sdfat الذي يسبب خطأ التوافق مع المترجم الحديث
+          # تعطيل نظام الملفات sdfat لتفادي أخطاء المترجم الحديث
           scripts/config --file out/.config --disable CONFIG_SDFAT_FS || true
           scripts/config --file out/.config --disable CONFIG_SDFAT_SUPPORT || true
           
-          # بناء الكيرنل مع تجاوز التحذيرات وتفعيل وضع التفصيل
-          make O=out -j$(nproc) ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-error=misleading-indentation" V=1
+          # بناء النواة مع تجاوز التحذيرات الصارمة للمترجم
+          make O=out -j$(nproc) ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-error=misleading-indentation"
 
       - name: Apply SukiSU KernelPatch (KPM)
         run: |
@@ -66,6 +66,7 @@ jobs:
             KERNEL_IMAGE="out/arch/arm64/boot/Image.gz"
           fi
           
+          # حقن ورقع النواة بأدوات SukiSU-Ultra
           ./kptools-linux -p -i "$KERNEL_IMAGE" -k kpimg -o patched_image
 
       - name: Pack with AnyKernel3
