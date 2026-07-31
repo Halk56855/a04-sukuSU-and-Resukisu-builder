@@ -22,13 +22,23 @@ jobs:
 
       - name: Find Kernel Root and Inject ReSukiSU
         run: |
-          # البحث الآمن عن مجلد drivers وتجنب أخطاء الفراغ
           DRIVERS_DIR=$(find . -type d -name "drivers" -print -quit)
           if [ -n "$DRIVERS_DIR" ]; then
             KERNEL_PATH=$(dirname "$DRIVERS_DIR")
             echo "Found kernel root at: $KERNEL_PATH"
             cd "$KERNEL_PATH"
+            
+            # 1. تشغيل سكريبت ReSukiSU الأساسي
             curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+            
+            # 2. استنساخ مستودع الرقع وتطبيق رقعة النواة 4.19 (أو حسب إصدار نواة هاتفك)
+            git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU_Patches.git patches
+            if [ -f "patches/scope-minimized/kernel-4.19.patch" ]; then
+              echo "Applying manual patch for kernel 4.19..."
+              git apply patches/scope-minimized/kernel-4.19.patch
+            else
+              echo "Warning: Specific patch not found, attempting general application or skipping."
+            fi
           else
             echo "Error: Kernel drivers directory not found in the repository!"
             exit 1
