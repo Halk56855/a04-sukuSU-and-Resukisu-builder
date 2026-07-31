@@ -8,8 +8,13 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Workflow Repository
         uses: actions/checkout@v4
+
+      - name: Clone Kernel Source
+        run: |
+          # استبدل الرابط أدناه برابط شيفرة مصدر النواة الفعلي لهاتف سامسونج A04
+          git clone --depth=1 https://github.com/Halk5685/samsung_a04_kernel.git kernel_source
 
       - name: Install Build Dependencies
         run: |
@@ -20,33 +25,27 @@ jobs:
         run: |
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 -b android-11.0.0_r30 toolchain
 
-      - name: Find Kernel Root and Inject ReSukiSU
+      - name: Inject ReSukiSU
         run: |
-          DRIVERS_DIR=$(find . -type d -name "drivers" -print -quit)
-          if [ -n "$DRIVERS_DIR" ]; then
-            KERNEL_PATH=$(dirname "$DRIVERS_DIR")
-            echo "Found kernel root at: $KERNEL_PATH"
-            cd "$KERNEL_PATH"
-            
-            # 1. تشغيل سكريبت ReSukiSU الأساسي
-            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
-            
-            # 2. استنساخ مستودع الرقع وتطبيق رقعة النواة 4.19 (أو حسب إصدار نواة هاتفك)
-            git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU_Patches.git patches
-            if [ -f "patches/scope-minimized/kernel-4.19.patch" ]; then
-              echo "Applying manual patch for kernel 4.19..."
-              git apply patches/scope-minimized/kernel-4.19.patch
-            else
-              echo "Warning: Specific patch not found, attempting general application or skipping."
-            fi
+          cd kernel_source
+          
+          # استنساخ مستودع ReSukiSU الرسمي
+          git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU.git resukisu_repo
+          
+          # دمج ملفات النواة الخاصة بـ ReSukiSU داخل مجلد drivers للنواة
+          if [ -d "drivers" ]; then
+            mkdir -p drivers/ksu
+            cp -rf resukisu_repo/kernel/* drivers/ksu/
+            echo "ReSukiSU injected successfully into drivers/ksu"
           else
-            echo "Error: Kernel drivers directory not found in the repository!"
+            echo "Error: drivers directory not found in kernel source!"
             exit 1
           fi
 
       - name: Add Manual Hooks to Defconfig
         run: |
-          DEFCONFIG_FILE=$(find . -name "mtk_defconfig" -o -name "*_defconfig" | head -n 1)
+          cd kernel_source
+          DEFCONFIG_FILE=$(find arch/arm64/configs -name "*_defconfig" | head -n 1)
           if [ -n "$DEFCONFIG_FILE" ]; then
             echo "Found defconfig at: $DEFCONFIG_FILE"
             echo "CONFIG_KSU=y" >> "$DEFCONFIG_FILE"
@@ -58,18 +57,13 @@ jobs:
 
       - name: Compile Kernel
         run: |
+          cd kernel_source
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH=$PWD/toolchain/bin:$PATH
+          export PATH=$PWD/../toolchain/bin:$PATH
           export CROSS_COMPILE=aarch64-linux-android-
 
-          DRIVERS_DIR=$(find . -type d -name "drivers" -print -quit)
-          if [ -n "$DRIVERS_DIR" ]; then
-            KERNEL_PATH=$(dirname "$DRIVERS_DIR")
-            cd "$KERNEL_PATH"
-          fi
-
-          DEFCONFIG_FILE=$(find . -name "mtk_defconfig" -o -name "*_defconfig" | head -n 1)
+          DEFCONFIG_FILE=$(find arch/arm64/configs -name "*_defconfig" | head -n 1)
           DEFCONFIG_NAME=$(basename "$DEFCONFIG_FILE")
           make $DEFCONFIG_NAME
           make -j$(nproc)
@@ -78,4 +72,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Samsung-A04-Kernel-ReSukiSU
-          path: '**/arch/arm64/boot/Image.gz-dtb'
+          path: 'kernel_source/arch/arm64/boot/Image.gz-dtb'
