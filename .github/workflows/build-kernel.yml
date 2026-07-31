@@ -15,12 +15,13 @@ jobs:
 
       - name: Install Build Dependencies
         run: |
+          sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y \
             bc bison build-essential ccache curl flex \
             g++-multilib gcc-multilib git gnupg gperf \
-            lib32ncurses5-dev lib32z1-dev libelf-dev \
-            liblz4-tool libncurses5-dev libssl-dev \
+            lib32z1-dev libelf-dev \
+            liblz4-tool libncurses-dev libssl-dev \
             libxml2 libxml2-utils lzop rsync schedtool \
             squashfs-tools xsltproc yasm zlib1g-dev
 
@@ -35,6 +36,5 @@ jobs:
           export SUBARCH=arm64
           export PATH="${PWD}/toolchain/clang/host/linux-x86/clang-r383902/bin:${PATH}"
           
-          # استبدل a04_defconfig باسم ملف التكوين (defconfig) الخاص بنواتك
           make O=out CC=clang a04_defconfig
           make -j$(nproc) O=out CC=clang
