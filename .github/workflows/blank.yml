@@ -1,76 +1,51 @@
-name: Smart AI Auto-Fix & Safety Patching Engine
+name: Build Samsung A04 Kernel with ReSukiSU
 
 on:
-  push:
-    branches: [ main, master ]
-  workflow_dispatch:
+  workflow_dispatch: # يتيح لك تشغيل البناء يدوياً من تبويب Actions في قيت هب
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04 # بيئة لينكس الافتراضية للتجميع
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Dependencies
+      - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc git python3 wget zip
 
-      - name: Clone Galaxy A04F Kernel Source
+      - name: Setup Toolchain (GCC/Clang)
         run: |
-          git clone https://github.com/rsuntkOrgs/android_kernel_samsung_a04.git -b stable --depth=1 kernel_source
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 -b android-11.0.0_r30 toolchain
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Smart AI Auto-Fix & Safety Patching Engine
+      - name: Inject ReSukiSU into Kernel
         run: |
-          cd kernel_source
-          cat << 'EOF' > ai_autofix_engine.py
-          import os
-          import sys
-
-          def main():
-              print("[+] Smart AI Auto-Fix & Safety Patching Engine initialized for Galaxy A04F.")
-              print("[+] Scanning kernel source for safe patching, error corrections, and updates...")
-              print("[+] Injecting ReSukiSU and SUSFS hooks safely with zero errors...")
-              print("[+] All security patches and AI-driven automated fixes applied successfully.")
-
-          if __name__ == '__main__':
-              main()
-          EOF
-          python3 ai_autofix_engine.py
-
-      - name: Setup Toolchain & Compile Kernel
-        run: |
-          cd kernel_source
-          git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git -b lineage-18.1 --depth=1 toolchain/gcc
+          cd drivers/
+          # استنساخ شيفرة ReSukiSU ووضعها كمجلد فرعي
+          git clone https://github.com/依托/ReSukiSU.git kernelsu
           
+          # تعديل ملفات التكوين لتضمين الدرايفر
+          echo 'source "drivers/kernelsu/Kconfig"' >> Kconfig
+          echo 'obj-y += kernelsu/' >> Makefile
+          cd ..
+
+      - name: Compile Kernel
+        run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="$(pwd)/toolchain/gcc/bin:$PATH"
+          export PATH=$PWD/toolchain/bin:$PATH
+          export CROSS_COMPILE=aarch64-linux-android-
+
+          # ضبط ملف الإعدادات الافتراضي للنواة (يتم تعديل اسم الملف حسب المتاح في المستودع)
+          make mtk_defconfig
           
-          echo "[-] Starting Kernel Compilation for Galaxy A04F..."
-          make O=out vendor/mediatek_defconfig
-          make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- CC=gcc
+          # بدء عملية التجميع باستخدام كافة أنظار المعالج المتاحة
+          make -j$(nproc)
 
-      - name: Package AnyKernel3
-        run: |
-          git clone https://github.com/Kernel-SU/AnyKernel3.git -b master anykernel
-          if [ -f kernel_source/out/arch/arm64/boot/Image.gz-dtb ]; then
-            cp kernel_source/out/arch/arm64/boot/Image.gz-dtb anykernel/
-          elif [ -f kernel_source/out/arch/arm64/boot/Image ]; then
-            cp kernel_source/out/arch/arm64/boot/Image anykernel/
-          fi
-          cd anykernel && zip -r ../Galaxy-A04F-ReSukiSU-SUSFS.zip *
-
-      - name: Upload Artifact
+      - name: Upload Built Kernel Image
         uses: actions/upload-artifact@v4
         with:
-          name: Galaxy-A04F-Kernel-Release
-          path: |
-            *.zip
+          name: Samsung-A04-Kernel-ReSukiSU
+          path: arch/arm64/boot/Image.gz-dtb
