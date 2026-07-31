@@ -14,16 +14,17 @@ jobs:
     - name: Set up Build Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev libglib2.0-dev zip git wget
+        sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev libglib2.0-dev zip git wget curl
 
     - name: Download Toolchains
       run: |
         mkdir -p toolchain
         cd toolchain
-        # Clang r383902b
-        wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r383902b.tar.gz
-        mkdir clang && tar -xf clang-r383902b.tar.gz -C clang
-        # GCC AArch64
+
+        # تحميل Clang باستخدام git clone لتفادي أخطاء wget 404
+        git clone --depth=1 https://gitlab.com/c3lphie/clang-r383902b.git clang
+
+        # تحميل GCC AArch64
         git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc64
 
     - name: Fetch Kernel Source
@@ -33,14 +34,19 @@ jobs:
     - name: Setup ReSukiSU & SUSFS
       run: |
         cd kernel
-        # Setup ReSukiSU v4.1.0
+
+        # إعداد ReSukiSU
         curl -LSs "https://raw.githubusercontent.com/rsuntkOrgs/ReSukiSU/main/kernel/setup.sh" | bash -s v4.1.0
 
-        # Clone SUSFS Patches
+        # استبدال وحدة اتصال MediaTek
+        rm -rf drivers/misc/mediatek/connectivity
+        git clone --depth=1 https://github.com/rsuntkOrgs/mtk_connectivity_module.git drivers/misc/mediatek/connectivity
+
+        # جلب وترقيع SUSFS
         git clone https://gitlab.com/simonpunk/susfs4ksu.git
         cp susfs4ksu/kernel-4.19/patches/50_add_susfs_in_kernel-4.19.patch .
-
-        # Apply Patch (Ignores errors to handle sched.h manually if needed)
+        
+        # تطبيق الترقيع بدون إيقاف التجميع في حال وجود تعارض لتتمكن من المعالجة
         patch -p1 < 50_add_susfs_in_kernel-4.19.patch || true
 
     - name: Compile Kernel
