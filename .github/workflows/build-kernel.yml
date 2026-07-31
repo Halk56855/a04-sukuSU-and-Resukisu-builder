@@ -46,12 +46,11 @@ jobs:
           scripts/config --file out/.config --enable CONFIG_KALLSYMS
           scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
           
-          # بناء الكيرنل مع تجاوز التحذيرات الصارمة للمترجم الحديث
-          make O=out -j$(nproc) ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion"
+          # بناء الكيرنل مع تفعيل وضع التفصيل V=1 لتظهر أسباب الخطأ بوضوح وتجاوز كافة تحذيرات المترجم
+          make O=out -j$(nproc) ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-error=misleading-indentation" V=1
 
       - name: Apply SukiSU KernelPatch (KPM)
         run: |
-          # تحميل أحدث أدوات الإصدار من SukiSU-Ultra
           wget https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/v0.13.0/kptools-linux
           wget https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/v0.13.0/kpimg
           chmod +x kptools-linux
@@ -63,7 +62,6 @@ jobs:
             KERNEL_IMAGE="out/arch/arm64/boot/Image.gz"
           fi
           
-          # حقن ورقع صورة الكيرنل الناتجة
           ./kptools-linux -p -i "$KERNEL_IMAGE" -k kpimg -o patched_image
 
       - name: Pack with AnyKernel3
