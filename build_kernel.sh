@@ -2,10 +2,10 @@
 set -euopipefail
 
 # ==============================================================================
-# KernelSU + SUSFS Builder for Samsung Galaxy A04 (SM-A045F)
+# ReSukiSU (KernelSU + SUSFS) Builder for Samsung Galaxy A04 (SM-A045F)
 # Based on: rsuntk-oss/android_kernel_samsung_a04m (mt6765)
 # Kernel base: 4.19.191 | Clang: r383902b (12.0.5)
-# SUSFS: simonpunk/susfs4ksu (kernel-4.19 branch)
+# Engine: ReSukiSU (susfs-rksu-master branch) + SUSFS 4.19
 # ==============================================================================
 
 WORK_DIR="$(pwd)"
@@ -61,7 +61,6 @@ setup_toolchains() {
     mkdir -p "$TOOLCHAIN_DIR"
     cd "$TOOLCHAIN_DIR"
 
-    # Use mirrors from ravindu644/Android-Kernel-Tutorials releases
     local MIRROR_BASE=https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains
 
     # --- Clang ---
@@ -70,7 +69,7 @@ setup_toolchains() {
         mkdir -p clang-r383902
         curl -L -o clang.tar.gz --connect-timeout 30 --retry 3 \
             "${MIRROR_BASE}/clang-r383902b.tar.gz" || {
-            warn "Mirror failed, trying ravi's alternative..."
+            warn "Mirror failed, trying alternative..."
             curl -L -o clang.tar.gz --connect-timeout 30 --retry 3 \
                 "${MIRROR_BASE}/clang-r383902.tar.gz" || {
                 err "Failed to download clang toolchain from all sources."
@@ -118,10 +117,10 @@ setup_toolchains() {
 }
 
 # ==============================================================================
-# Step 3: Integrate SUSFS + KernelSU
+# Step 3: Integrate SUSFS + ReSukiSU
 # ==============================================================================
-integrate_susfs() {
-    log "=== Integrating SUSFS + KernelSU ==="
+integrate_resukisu() {
+    log "=== Integrating SUSFS + ReSukiSU ==="
     cd "$KERNEL_DIR"
 
     # Step 3a: Download SUSFS patches from GitLab
@@ -167,12 +166,9 @@ integrate_susfs() {
         patch -p1 --forward --fuzz=3 --no-backup-if-mismatch \
             < "${SUSFS_DIR}/50_add_susfs_in_kernel-4.19.patch" 2>&1 || true
         
-        # Fix compilation error in fs/notify/fdinfo.c for some 4.19 kernels
         if [ -f fs/notify/fdinfo.c ]; then
             log "Fixing fs/notify/fdinfo.c patch artifacts..."
-            # Fix label followed by declaration error
             sed -i 's/out_seq_printf:/out_seq_printf:;/g' fs/notify/fdinfo.c
-            # Define missing inotify_mark_user_mask macro if used but not defined
             if grep -q "inotify_mark_user_mask" fs/notify/fdinfo.c; then
                 if ! grep -q "#define inotify_mark_user_mask" fs/notify/fdinfo.c; then
                     sed -i '/#include <linux\/exportfs.h>/a #define inotify_mark_user_mask(mark) (mark->mask \& IN_ALL_EVENTS)' fs/notify/fdinfo.c
@@ -201,18 +197,18 @@ integrate_susfs() {
         sed -i '/^obj-y :=.*nsfs.o/a obj-$(CONFIG_KSU_SUSFS) += susfs.o' "fs/Makefile" 2>/dev/null || true
     fi
 
-    # Step 3e: Integrate KernelSU
-    log "Integrating KernelSU (susfs-rksu-master branch)..."
-    cd "$KERNEL_DIR"
+    # Step 3e: Replace MTK Connectivity (WiFi Fix for 4.19)
+    log "Replacing mtk connectivity module (WiFi fix)..."
     if [ -d "drivers/misc/mediatek/connectivity" ]; then
-        log "Replacing mtk connectivity module (WiFi fix)..."
         rm -rf drivers/misc/mediatek/connectivity
         git clone --depth=1 https://github.com/rsuntkOrgs/mtk_connectivity_module.git \
-            -b staging-4.14 drivers/misc/mediatek/connectivity 2>/dev/null || true
+            drivers/misc/mediatek/connectivity 2>/dev/null || true
         rm -rf drivers/misc/mediatek/connectivity/.git
     fi
 
-    log "Running KernelSU setup (susfs-rksu-master)..."
+    # Step 3f: Integrate ReSukiSU (susfs-rksu-master)
+    log "Integrating ReSukiSU engine (susfs-rksu-master)..."
+    cd "$KERNEL_DIR"
     curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/susfs-rksu-master/kernel/setup.sh" \
         | bash -s latest 2>&1 || {
         warn "Auto setup failed, trying manual clone..."
@@ -220,7 +216,7 @@ integrate_susfs() {
             local KSU_TMP="${WORK_DIR}/ksu_tmp"
             mkdir -p "$KSU_TMP"
             git clone --depth=1 -b susfs-rksu-master \
-                https://github.com/rsuntk/KernelSU.git "$KSU_TMP" 2>/dev/null || err "Failed to clone KernelSU!"
+                https://github.com/rsuntk/KernelSU.git "$KSU_TMP" 2>/dev/null || err "Failed to clone ReSukiSU!"
             cp -r "$KSU_TMP" "$KERNEL_DIR/KernelSU"
             ln -sf "../../KernelSU/kernel" "$KERNEL_DIR/drivers/kernelsu" 2>/dev/null || true
             rm -rf "$KSU_TMP"
@@ -228,9 +224,9 @@ integrate_susfs() {
     }
 
     if [ ! -f "KernelSU/kernel/ksu.h" ] && [ ! -L "drivers/kernelsu" ]; then
-        err "KernelSU integration failed!"
+        err "ReSukiSU integration failed!"
     fi
-    log "SUSFS + KernelSU Integration complete."
+    log "ReSukiSU + SUSFS Integration complete."
 }
 
 # ==============================================================================
@@ -249,7 +245,7 @@ configure_kernel() {
     log "Using a04_defconfig..."
     make "${MAKE_OPTS[@]}" a04_defconfig || err "Defconfig failed"
 
-    log "Enabling KernelSU..."
+    log "Enabling ReSukiSU (KernelSU)..."
     scripts/config --file out/.config --enable CONFIG_KSU
     scripts/config --file out/.config --enable CONFIG_KSU_MANUAL_HOOK
 
@@ -266,7 +262,7 @@ configure_kernel() {
     scripts/config --file out/.config --enable CONFIG_SECURITY_SELINUX_DEVELOP || true
     scripts/config --file out/.config --disable CONFIG_SECURITY_SELINUX_ALWAYS_ENFORCE || true
     scripts/config --file out/.config --disable CONFIG_KSU_DEBUG 2>/dev/null || true
-    scripts/config --file out/.config --set-str CONFIG_LOCALVERSION "-th-v2"
+    scripts/config --file out/.config --set-str CONFIG_LOCALVERSION "-resukisu-v2"
     scripts/config --file out/.config --disable CONFIG_LOCALVERSION_AUTO
 
     make "${MAKE_OPTS[@]}" olddefconfig 2>/dev/null || true
@@ -303,20 +299,20 @@ package_kernel() {
     mkdir -p "$OUTPUT_DIR"
     cp "${KERNEL_DIR}/out/arch/arm64/boot/Image" "$OUTPUT_DIR/Image"
     cd "$OUTPUT_DIR"
-    tar -cvf "KernelSU_A04_boot.tar" "Image" 2>/dev/null
+    tar -cvf "ReSukiSU_A04_boot.tar" "Image" 2>/dev/null
     if command -v md5sum &>/dev/null; then
-        md5sum "KernelSU_A04_boot.tar" | cut -d' ' -f1 | tr -d '\n' >> "KernelSU_A04_boot.tar"
-        mv "KernelSU_A04_boot.tar" "KernelSU_A04_boot.tar.md5"
-        log "Created: KernelSU_A04_boot.tar.md5"
+        md5sum "ReSukiSU_A04_boot.tar" | cut -d' ' -f1 | tr -d '\n' >> "ReSukiSU_A04_boot.tar"
+        mv "ReSukiSU_A04_boot.tar" "ReSukiSU_A04_boot.tar.md5"
+        log "Created: ReSukiSU_A04_boot.tar.md5"
     fi
 }
 
 main() {
     mkdir -p "$OUTPUT_DIR"
-    log "=== KernelSU + SUSFS Builder for SM-A045F ==="
+    log "=== ReSukiSU Builder for SM-A045F ==="
     download_kernel_source
     setup_toolchains
-    integrate_susfs
+    integrate_resukisu
     configure_kernel
     build_kernel
     package_kernel
