@@ -21,8 +21,9 @@ jobs:
         mkdir -p toolchain
         cd toolchain
 
-        # تحميل Clang باستخدام git clone لتفادي أخطاء wget 404
-        git clone --depth=1 https://gitlab.com/c3lphie/clang-r383902b.git clang
+        # تحميل واستخراج Clang r383902b المباشر من Google
+        mkdir clang
+        curl -LSs "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/android11-release/clang-r383902b.tar.gz" | tar -xzC clang
 
         # تحميل GCC AArch64
         git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc64
@@ -46,7 +47,7 @@ jobs:
         git clone https://gitlab.com/simonpunk/susfs4ksu.git
         cp susfs4ksu/kernel-4.19/patches/50_add_susfs_in_kernel-4.19.patch .
         
-        # تطبيق الترقيع بدون إيقاف التجميع في حال وجود تعارض لتتمكن من المعالجة
+        # تطبيق الترقيع بدون إيقاف التجميع في حال وجود تعارض
         patch -p1 < 50_add_susfs_in_kernel-4.19.patch || true
 
     - name: Compile Kernel
