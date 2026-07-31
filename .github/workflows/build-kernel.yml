@@ -1,4 +1,4 @@
-name: Build SukiSU-Ultra KernelPatch for Galaxy A04m
+name: Build SukiSU-Ultra KernelPatch for Galaxy A04
 
 on:
   workflow_dispatch: # للبدء اليدوي من تبويب Actions
@@ -17,11 +17,11 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
 
-      - name: Checkout Kernel Source (rsuntk-oss/latest-B)
+      - name: Checkout Kernel Source (DaniTheSillyFem/kernel_samsung_a04)
         uses: actions/checkout@v4
         with:
-          repository: rsuntk-oss/android_kernel_samsung_a04m
-          ref: latest-B
+          repository: DaniTheSillyFem/kernel_samsung_a04
+          ref: linux-4.19.y
 
       - name: Install Build Dependencies
         run: |
@@ -38,36 +38,37 @@ jobs:
           export SUBARCH=arm64
           export PATH="${{ github.workspace }}/toolchain-gcc64/bin:$PATH"
           
-          # تنظيف الملفات السابقة وضبط التهيئة لمعالج MediaTek
+          # تنظيف الملفات السابقة بالكامل
           make O=out mrproper || true
-          make O=out mtk_defconfig || make O=out a04_defconfig || true
           
-          # تنظيف تلقائي لجميع ملفات Kconfig وإزالة الأحرف غير المدعومة لتفادي أخطاء olddefconfig
-          find drivers/ -name "Kconfig" | while read -r file; do
-            tr -cd '\11\12\15\40-\176' < "$file" > "$file.tmp" && mv "$file.tmp" "$file" || true
-          done
-          
-          # إصلاح تضارب تعريف MTK_CMDQ تلقائياً
-          if [ -f "drivers/soc/mediatek/Kconfig" ]; then
-            sed -i '/config MTK_CMDQ/,/tristate/ s/tristate/bool/' drivers/soc/mediatek/Kconfig || true
+          # اكتشاف وضبط ملف التهيئة المناسب تلقائياً
+          DEFCONFIG=""
+          if [ -d "arch/arm64/configs" ]; then
+            DEFCONFIG=$(ls arch/arm64/configs/ | grep -E "a04|mtk|6765" | head -n 1)
           fi
           
-          # محاكاة التكوين وتحديث التهيئة
+          if [ -n "$DEFCONFIG" ]; then
+            make O=out "$DEFCONFIG"
+          else
+            make O=out mtk_defconfig || make O=out a04_defconfig || true
+          fi
+          
+          # مزامنة التهيئة تلقائياً
           make O=out olddefconfig || true
           
-          # تفعيل المتطلبات الإجبارية لـ SukiSU-Ultra وحسب التوثيق الرسمي لنواة 4.19
+          # تفعيل المتطلبات الإجبارية لـ SukiSU-Ultra ونواة 4.19
           scripts/config --file out/.config --enable CONFIG_KPM
           scripts/config --file out/.config --enable CONFIG_KALLSYMS
           scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
           
-          # تعطيل نظام الملفات غير المتوافق
+          # تعطيل نظم الملفات المتعارضة لتفادي أخطاء التجميع
           scripts/config --file out/.config --disable CONFIG_SDFAT_FS || true
           scripts/config --file out/.config --disable CONFIG_SDFAT_SUPPORT || true
           
-          # مزامنة نهائية للتهيئة وضمان سلامتها
+          # مزامنة نهائية لتثبيت الإعدادات
           make O=out olddefconfig
           
-          # بناء النواة باستخدام مترجم GCC وتوافق تام مع تعريفات MediaTek Drivers
+          # بدء البناء البرمجي للنواة بتوافق تام مع معالجات MediaTek
           make O=out -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-w"
 
       - name: Apply SukiSU KernelPatch (KPM)
@@ -98,10 +99,10 @@ jobs:
           fi
           
           cd anykernel
-          zip -r ../SukiSU-Ultra-KernelPatch-A04m.zip *
+          zip -r ../SukiSU-Ultra-KernelPatch-A04.zip *
 
       - name: Upload Built Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SukiSU-Ultra-KernelPatch-A04m
-          path: SukiSU-Ultra-KernelPatch-A04m.zip
+          name: SukiSU-Ultra-KernelPatch-A04
+          path: SukiSU-Ultra-KernelPatch-A04.zip
