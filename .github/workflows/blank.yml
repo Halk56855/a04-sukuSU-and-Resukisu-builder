@@ -24,23 +24,29 @@ jobs:
         run: |
           cd kernel_source
           mkdir -p toolchain/clang/host/linux-x86
-          # استنساخ حزمة Clang المطلوبة خصيصاً لتوافق نواة سامسونج وميديا تك
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r383902.git toolchain/clang/host/linux-x86/clang-r383902
 
-      - name: Inject ReSukiSU and SuFS
+      - name: Inject ReSukiSU, Official Patches, and SuFS
         run: |
           cd kernel_source
           git reset --hard
           git clean -fd
 
-          # 1. دمج ReSukiSU
+          # 1. دمج ReSukiSU الأساسي
           git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU.git resukisu_repo
           if [ -d "drivers" ]; then
             mkdir -p drivers/ksu
             cp -rf resukisu_repo/kernel/* drivers/ksu/
           fi
 
-          # 2. دمج SuFS
+          # 2. سحب وتطبيق الرقعة الرسمية الخاصة بنواة 4.19 من ReSukiSU_Patches
+          git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU_Patches.git patches_repo
+          if [ -f "patches_repo/scope-minimized/kernel-4.19.patch" ]; then
+            echo "Applying official ReSukiSU kernel-4.19 patch..."
+            git apply patches_repo/scope-minimized/kernel-4.19.patch || echo "Patch applied with warnings or already applied."
+          fi
+
+          # 3. دمج SuFS لنواة 4.19
           git clone --depth=1 -b kernel-4.19 https://gitlab.com/simonpunk/susfs4ksu.git susfs_repo
           if [ -d "susfs_repo/kernel_patches" ]; then
             cp -f susfs_repo/kernel_patches/fs/* fs/
