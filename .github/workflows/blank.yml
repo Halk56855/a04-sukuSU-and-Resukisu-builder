@@ -1,11 +1,11 @@
 name: Build Samsung A04 Kernel with ReSukiSU
 
 on:
-  workflow_dispatch: # يتيح تشغيل البناء يدوياً من تبويب Actions في قيت هب
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04 # بيئة لينكس الافتراضية للبناء
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout Repository
@@ -22,15 +22,13 @@ jobs:
 
       - name: Inject ReSukiSU via Official Script
         run: |
-          cd drivers/
-          # تشغيل السكريبت الرسمي لدمج ReSukiSU تلقائياً
+          # تنفيذ السكريبت الرسمي من الجذر الرئيسي للنواة حصراً
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
-          cd ..
 
       - name: Add Manual Hooks to Defconfig
         run: |
-          # إضافة إعدادات التكوين المطلوبة للخطافات اليدوية بملف الـ defconfig
-          DEFCONFIG_FILE="arch/arm64/configs/mtk_defconfig" # استبدل اسم الملف حسب مسار الdefconfig الفعلي في مستودعك
+          # تحديد مسار ملف الـ defconfig وتفعيل المتطلبات الخاصة بالنواة القديمة
+          DEFCONFIG_FILE="arch/arm64/configs/mtk_defconfig" # استبدل الاسم بملف الـ defconfig الفعلي لمستودعك إن وجد غير ذلك
           echo "CONFIG_KSU=y" >> $DEFCONFIG_FILE
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> $DEFCONFIG_FILE
 
@@ -41,7 +39,6 @@ jobs:
           export PATH=$PWD/toolchain/bin:$PATH
           export CROSS_COMPILE=aarch64-linux-android-
 
-          # تجهيز إعدادات النواة وبدء التجميع باستخدام كافة أنوية المعالج السحابي
           make mtk_defconfig
           make -j$(nproc)
 
