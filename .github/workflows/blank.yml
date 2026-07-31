@@ -1,11 +1,11 @@
 name: Build Samsung A04 Kernel with ReSukiSU
 
 on:
-  workflow_dispatch: # يتيح لك تشغيل البناء يدوياً من تبويب Actions في قيت هب
+  workflow_dispatch: # يتيح تشغيل البناء يدوياً من تبويب Actions في قيت هب
 
 jobs:
   build:
-    runs-on: ubuntu-22.04 # بيئة لينكس الافتراضية للتجميع
+    runs-on: ubuntu-22.04 # بيئة لينكس الافتراضية للبناء
 
     steps:
       - name: Checkout Repository
@@ -20,16 +20,19 @@ jobs:
         run: |
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 -b android-11.0.0_r30 toolchain
 
-      - name: Inject ReSukiSU into Kernel
+      - name: Inject ReSukiSU via Official Script
         run: |
           cd drivers/
-          # استنساخ شيفرة ReSukiSU ووضعها كمجلد فرعي
-          git clone https://github.com/依托/ReSukiSU.git kernelsu
-          
-          # تعديل ملفات التكوين لتضمين الدرايفر
-          echo 'source "drivers/kernelsu/Kconfig"' >> Kconfig
-          echo 'obj-y += kernelsu/' >> Makefile
+          # تشغيل السكريبت الرسمي لدمج ReSukiSU تلقائياً
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
           cd ..
+
+      - name: Add Manual Hooks to Defconfig
+        run: |
+          # إضافة إعدادات التكوين المطلوبة للخطافات اليدوية بملف الـ defconfig
+          DEFCONFIG_FILE="arch/arm64/configs/mtk_defconfig" # استبدل اسم الملف حسب مسار الdefconfig الفعلي في مستودعك
+          echo "CONFIG_KSU=y" >> $DEFCONFIG_FILE
+          echo "CONFIG_KSU_MANUAL_HOOK=y" >> $DEFCONFIG_FILE
 
       - name: Compile Kernel
         run: |
@@ -38,10 +41,8 @@ jobs:
           export PATH=$PWD/toolchain/bin:$PATH
           export CROSS_COMPILE=aarch64-linux-android-
 
-          # ضبط ملف الإعدادات الافتراضي للنواة (يتم تعديل اسم الملف حسب المتاح في المستودع)
+          # تجهيز إعدادات النواة وبدء التجميع باستخدام كافة أنوية المعالج السحابي
           make mtk_defconfig
-          
-          # بدء عملية التجميع باستخدام كافة أنظار المعالج المتاحة
           make -j$(nproc)
 
       - name: Upload Built Kernel Image
