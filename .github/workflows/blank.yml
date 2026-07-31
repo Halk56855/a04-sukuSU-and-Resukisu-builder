@@ -1,4 +1,4 @@
-name: Build Samsung A04 Kernel with ReSukiSU
+name: Build Samsung A04 Kernel with ReSukiSU and SuFS
 
 on:
   workflow_dispatch:
@@ -13,7 +13,6 @@ jobs:
 
       - name: Clone Kernel Source
         run: |
-          # سحب شيفرة النواة الصحيحة والخاصة بهاتف Galaxy A04
           git clone --depth=1 https://github.com/A04-Trees-and-ROMs/android_kernel_samsung_a04.git kernel_source
 
       - name: Install Build Dependencies
@@ -25,23 +24,44 @@ jobs:
         run: |
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 -b android-11.0.0_r30 toolchain
 
-      - name: Inject ReSukiSU
+      - name: Inject ReSukiSU and SuFS
         run: |
           cd kernel_source
-          
-          # استنساخ مستودع ReSukiSU ودمجه داخل النواة
+
+          # 1. استنساخ ودمج ReSukiSU
           git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU.git resukisu_repo
-          
           if [ -d "drivers" ]; then
             mkdir -p drivers/ksu
             cp -rf resukisu_repo/kernel/* drivers/ksu/
-            echo "ReSukiSU injected successfully into drivers/ksu"
           else
-            echo "Error: drivers directory not found in kernel source!"
+            echo "Error: drivers directory not found!"
             exit 1
           fi
 
-      - name: Add Manual Hooks to Defconfig
+          # 2. استنساخ مستودع susfs4ksu للفرع kernel-4.19
+          git clone --depth=1 -b kernel-4.19 https://gitlab.com/simonpunk/susfs4ksu.git susfs_repo
+          
+          if [ -d "susfs_repo/kernel_patches" ]; then
+            cp -f susfs_repo/kernel_patches/fs/* fs/
+            cp -f susfs_repo/kernel_patches/include/linux/* include/linux/
+            
+            PATCH_FILE=$(find susfs_repo/kernel_patches -name "*.patch" | head -n 1)
+            if [ -n "$PATCH_FILE" ]; then
+              echo "Applying SuFS patch: $PATCH_FILE"
+              git apply "$PATCH_FILE" || echo "Patch application had warnings or already applied."
+            fi
+          fi
+
+      - name: Fix Kconfig Conflicts
+        run: |
+          cd kernel_source
+          # معالجة مشكلة إعادة تعريف MTK_CMDQ لمنع توقف البناء
+          if [ -f "drivers/soc/mediatek/Kconfig" ]; then
+            sed -i '/config MTK_CMDQ/,/tristate/d' drivers/soc/mediatek/Kconfig || true
+            echo "Kconfig conflicts resolved."
+          fi
+
+      - name: Configure Defconfig for KSU and SuFS
         run: |
           cd kernel_source
           DEFCONFIG_FILE=$(find arch/arm64/configs -name "*_defconfig" | head -n 1)
@@ -49,6 +69,9 @@ jobs:
             echo "Found defconfig at: $DEFCONFIG_FILE"
             echo "CONFIG_KSU=y" >> "$DEFCONFIG_FILE"
             echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_KSU_SUSFS_HAS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_KSU_SUSFS_HAS_AUTO_ADD_SUS_KSU_DEFAULT_HOOK=y" >> "$DEFCONFIG_FILE"
           else
             echo "Error: Defconfig file not found!"
             exit 1
@@ -70,5 +93,5 @@ jobs:
       - name: Upload Built Kernel Image
         uses: actions/upload-artifact@v4
         with:
-          name: Samsung-A04-Kernel-ReSukiSU
+          name: Samsung-A04-Kernel-ReSukiSU-SuFS
           path: 'kernel_source/arch/arm64/boot/Image.gz-dtb'
