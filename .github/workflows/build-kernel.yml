@@ -38,18 +38,25 @@ jobs:
           export SUBARCH=arm64
           export PATH="${{ github.workspace }}/toolchain-gcc64/bin:$PATH"
           
-          # إعداد ملف التهيئة الخاص بمعالجات ميديا تك
+          # تنظيف الملفات السابقة وضبط التهيئة لمعالج MediaTek Helio P35
+          make O=out mrproper || true
           make O=out mtk_defconfig || make O=out a04_defconfig || true
+          
+          # إصلاح وتوافق أنواع Kconfig ومزامنتها تلقائياً
+          make O=out olddefconfig || true
           
           # تفعيل المتطلبات الإجبارية لـ KernelPatch
           scripts/config --file out/.config --enable CONFIG_KALLSYMS
           scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
           
-          # تعطيل نظام الملفات غير المتوافق لتفادي أخطاء التجميع
+          # تعطيل نظام الملفات غير المتوافق
           scripts/config --file out/.config --disable CONFIG_SDFAT_FS || true
           scripts/config --file out/.config --disable CONFIG_SDFAT_SUPPORT || true
           
-          # بناء النواة باستخدام مترجم GCC لضمان التوافق التام مع تعريفات MediaTek Drivers
+          # مزامنة نهائية للتهيئة وضمان عدم وجود أخطاء في Kconfig
+          make O=out olddefconfig
+          
+          # بناء النواة باستخدام مترجم GCC وتوافق تام مع تعريفات MediaTek
           make O=out -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-w"
 
       - name: Apply SukiSU KernelPatch (KPM)
