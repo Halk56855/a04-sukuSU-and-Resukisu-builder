@@ -73,8 +73,9 @@ jobs:
 
       - name: Apply SukiSU KernelPatch (KPM)
         run: |
-          wget https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/v0.13.0/kptools-linux
-          wget https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/v0.13.0/kpimg
+          # تصحيح روابط تحميل أدوات SukiSU-Ultra الصحيحة (المصدر: ShirkNeko)
+          wget https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/v0.13.0/kptools-linux
+          wget https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/v0.13.0/kpimg
           chmod +x kptools-linux
           
           KERNEL_IMAGE="out/arch/arm64/boot/Image"
