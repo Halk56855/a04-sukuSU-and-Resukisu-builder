@@ -42,11 +42,15 @@ jobs:
           # إعداد الـ defconfig الخاص بالمستودع
           make O=out mtk_defconfig || make O=out a04_defconfig || true
           
-          # تفعيل المتطلب الإجباري CONFIG_KALLSYMS الخاص بـ KernelPatch
+          # تفعيل المتطلبات الإجبارية لـ KernelPatch
           scripts/config --file out/.config --enable CONFIG_KALLSYMS
           scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
           
-          # بناء الكيرنل مع تفعيل وضع التفصيل V=1 لتظهر أسباب الخطأ بوضوح وتجاوز كافة تحذيرات المترجم
+          # تعطيل نظام الملفات sdfat الذي يسبب خطأ التوافق مع المترجم الحديث
+          scripts/config --file out/.config --disable CONFIG_SDFAT_FS || true
+          scripts/config --file out/.config --disable CONFIG_SDFAT_SUPPORT || true
+          
+          # بناء الكيرنل مع تجاوز التحذيرات وتفعيل وضع التفصيل
           make O=out -j$(nproc) ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-error=misleading-indentation" V=1
 
       - name: Apply SukiSU KernelPatch (KPM)
