@@ -28,30 +28,29 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev
 
-      - name: Download Toolchains
+      - name: Download Toolchains (GCC for MediaTek Compatibility)
         run: |
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain-gcc64 || true
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r416183b.git clang-llvm || true
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain-gcc64
 
-      - name: Configure and Compile Kernel
+      - name: Configure and Compile Kernel with GCC
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="${{ github.workspace }}/clang-llvm/bin:${{ github.workspace }}/toolchain-gcc64/bin:$PATH"
+          export PATH="${{ github.workspace }}/toolchain-gcc64/bin:$PATH"
           
-          # إعداد ملف التهيئة الخاص بالمستودع
+          # إعداد ملف التهيئة الخاص بمعالجات ميديا تك (MediaTek Defconfig)
           make O=out mtk_defconfig || make O=out a04_defconfig || true
           
           # تفعيل المتطلبات الإجبارية لـ KernelPatch
           scripts/config --file out/.config --enable CONFIG_KALLSYMS
           scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
           
-          # تعطيل نظام الملفات sdfat لتفادي أخطاء التوافق
+          # تعطيل نظام الملفات غير المتوافق مع المترجم
           scripts/config --file out/.config --disable CONFIG_SDFAT_FS || true
           scripts/config --file out/.config --disable CONFIG_SDFAT_SUPPORT || true
           
-          # بناء النواة مع قمع كافة التحذيرات والأخطاء الصارمة للمترجم الحديث نهائياً
-          make O=out -j$(nproc) ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-w" HOSTCFLAGS="-w"
+          # بناء النواة باستخدام مترجم GCC لضمان التوافق التام مع تعريفات MediaTek Drivers وتجاوز كافة الأخطاء
+          make O=out -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-w"
 
       - name: Apply SukiSU KernelPatch (KPM)
         run: |
@@ -66,7 +65,7 @@ jobs:
             KERNEL_IMAGE="out/arch/arm64/boot/Image.gz"
           fi
           
-          # حقن النواة بأدوات SukiSU-Ultra
+          # حقن ورقع النواة بأدوات SukiSU-Ultra
           ./kptools-linux -p -i "$KERNEL_IMAGE" -k kpimg -o patched_image
 
       - name: Pack with AnyKernel3
