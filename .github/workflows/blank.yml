@@ -20,15 +20,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc git python3 wget zip make clang llvm
 
-      - name: Setup Clang Toolchain (clang-r547379)
+      - name: Setup Correct Clang Toolchain (clang-r383902)
         run: |
-          # تثبيت أداة الترجمة في مسار خارجي ثابت بجانب مجلد النواة لسهولة الوصول إليها
           mkdir -p toolchain/clang/host/linux-x86
           cd toolchain/clang/host/linux-x86
           git init
           git remote add origin https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86
           git config core.sparseCheckout true
-          echo "clang-r547379/" >> .git/info/sparse-checkout
+          echo "clang-r383902/" >> .git/info/sparse-checkout
           git pull --depth=1 origin main
 
       - name: Inject ReSukiSU, Official Patches, and SuFS Safely
@@ -44,14 +43,20 @@ jobs:
             cp -rf resukisu_repo/kernel/* drivers/ksu/
           fi
 
-          # 2. سحب رقعة ReSukiSU وتطبيقها مع تجاهل الأجزاء الفارغة لتجنب التوقف
+          # 2. إضافة تضمين KSU في init/Kconfig بشكل صحيح وآمن
+          if [ -f "init/Kconfig" ]; then
+            if ! grep -q "drivers/ksu/Kconfig" init/Kconfig; then
+              sed -i '/endmenu/i source "drivers/ksu/Kconfig"' init/Kconfig || true
+            fi
+          fi
+
+          # 3. سحب وتطبيق رقعة ReSukiSU لنواة 4.19 مع تجاهل التعارضات
           git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU_Patches.git patches_repo
           if [ -f "patches_repo/scope-minimized/kernel-4.19.patch" ]; then
-            echo "Applying official ReSukiSU kernel-4.19 patch safely..."
             git apply --reject --whitespace=fix patches_repo/scope-minimized/kernel-4.19.patch || true
           fi
 
-          # 3. دمج SuFS لنواة 4.19 مع تجاوز الأخطاء الفردية
+          # 4. دمج SuFS لنواة 4.19
           git clone --depth=1 -b kernel-4.19 https://gitlab.com/simonpunk/susfs4ksu.git susfs_repo
           if [ -d "susfs_repo/kernel_patches" ]; then
             cp -f susfs_repo/kernel_patches/fs/* fs/ || true
@@ -63,10 +68,9 @@ jobs:
             fi
           fi
 
-      - name: Fix Kconfig Conflicts
+      - name: Clean MediaTek Kconfig Conflicts
         run: |
           cd kernel_source
-          # معالجة أي تعارض في تكرار المتغيرات بملفات Kconfig
           if [ -f "drivers/soc/mediatek/Kconfig" ]; then
             sed -i '/config MTK_CMDQ/,/tristate/d' drivers/soc/mediatek/Kconfig || true
           fi
@@ -76,7 +80,6 @@ jobs:
           cd kernel_source
           DEFCONFIG_FILE=$(find arch/arm64/configs -name "*_defconfig" | head -n 1)
           if [ -n "$DEFCONFIG_FILE" ]; then
-            echo "Found defconfig at: $DEFCONFIG_FILE"
             echo "CONFIG_KSU=y" >> "$DEFCONFIG_FILE"
             echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG_FILE"
             echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG_FILE"
@@ -92,8 +95,7 @@ jobs:
           cd kernel_source
           export ARCH=arm64
           export SUBARCH=arm64
-          # تصحيح مسار الـ PATH ليشير بشكل صحيح لمجلد toolchain الخارجي
-          export PATH=$PWD/../toolchain/clang/host/linux-x86/clang-r547379/bin:$PATH
+          export PATH=$PWD/../toolchain/clang/host/linux-x86/clang-r383902/bin:$PATH
           export CC=clang
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-android-
