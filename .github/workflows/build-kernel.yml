@@ -1,40 +1,89 @@
-name: Build Android Kernel
+name: Build SukiSU-Ultra KernelPatch for Galaxy A04m
 
 on:
-  workflow_dispatch:
-  push:
-    branches: [ main, master ]
+  workflow_dispatch: # للبدء اليدوي من تبويب Actions
 
 jobs:
-  build-kernel:
-    runs-on: ubuntu-latest
-
+  build:
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout Repository
+      - name: Maximize Build Space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 16384
+          temp-reserve-mb: 4096
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+
+      - name: Checkout Kernel Source (rsuntk-oss/latest-B)
         uses: actions/checkout@v4
+        with:
+          repository: rsuntk-oss/android_kernel_samsung_a04m
+          ref: latest-B
 
       - name: Install Build Dependencies
         run: |
-          sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y \
-            bc bison build-essential ccache curl flex \
-            g++-multilib gcc-multilib git gnupg gperf \
-            lib32z1-dev libelf-dev \
-            liblz4-tool libncurses-dev libssl-dev \
-            libxml2 libxml2-utils lzop rsync schedtool \
-            squashfs-tools xsltproc yasm zlib1g-dev
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev
 
-      - name: Clone Clang Toolchain
+      - name: Download Toolchains
         run: |
-          mkdir -p toolchain/clang/host/linux-x86
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r383902.git toolchain/clang/host/linux-x86/clang-r383902
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain-gcc64 || true
+          git clone --depth=1 https://github.com/llvm/llvm-project.git --sparse clang-llvm || true
 
-      - name: Build Kernel
+      - name: Configure and Compile Kernel
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="${PWD}/toolchain/clang/host/linux-x86/clang-r383902/bin:${PATH}"
+          export PATH="${{ github.workspace }}/clang-llvm/bin:${{ github.workspace }}/toolchain-gcc64/bin:$PATH"
           
-          make O=out CC=clang a04_defconfig
-          make -j$(nproc) O=out CC=clang
+          # إعداد الـ defconfig الخاص بالمستودع
+          make O=out mtk_defconfig || make O=out a04_defconfig || true
+          
+          # تفعيل المتطلب الإجباري CONFIG_KALLSYMS الخاص بـ KernelPatch
+          scripts/config --file out/.config --enable CONFIG_KALLSYMS
+          scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
+          
+          # بناء الكيرنل الخام
+          make O=out -j$(nproc) ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-android-
+
+      - name: Apply SukiSU KernelPatch (KPM)
+        run: |
+          # تحميل أدوات الإصدار v0.13.0 من مستودع SukiSU_KernelPatch_patch
+          wget https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/v0.13.0/kptools-linux
+          wget https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/v0.13.0/kpimg
+          chmod +x kptools-linux
+          
+          # تحديد مسار صورة الكيرنل الناتجة
+          KERNEL_IMAGE="out/arch/arm64/boot/Image"
+          if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
+            KERNEL_IMAGE="out/arch/arm64/boot/Image.gz-dtb"
+          elif [ -f "out/arch/arm64/boot/Image.gz" ]; then
+            KERNEL_IMAGE="out/arch/arm64/boot/Image.gz"
+          fi
+          
+          # حقن ورقع الكيرنل باستخدام kptools و kpimg
+          ./kptools-linux -p -i "$KERNEL_IMAGE" -k kpimg -o patched_image
+
+      - name: Pack with AnyKernel3
+        run: |
+          git clone https://github.com/Kernel-SU/AnyKernel3 -b master anykernel
+          rm -rf anykernel/.git
+          
+          # وضع الكيرنل المرقع داخل حزمة الفلاش
+          if [ -f "patched_image" ]; then
+            cp patched_image anykernel/Image
+          else
+            cp out/arch/arm64/boot/Image anykernel/Image
+          fi
+          
+          cd anykernel
+          zip -r ../SukiSU-Ultra-KernelPatch-A04m.zip *
+
+      - name: Upload Built Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SukiSU-Ultra-KernelPatch-A04m
+          path: SukiSU-Ultra-KernelPatch-A04m.zip
