@@ -23,6 +23,16 @@ jobs:
           repository: rsuntk-oss/android_kernel_samsung_a04m
           ref: latest-B
 
+      - name: Clone SukiSU Patch Repository
+        run: |
+          git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git sukisu_patch
+
+      - name: Apply Kernel Source Patch (4.19)
+        run: |
+          cd ${{ github.workspace }}
+          # تطبيق رقعة الإصدار 4.19 الخاصة بنواة A04m
+          git apply sukisu_patch/4.19/ksu_hooks_sukisu_4.19-patch || git apply --whitespace=fix sukisu_patch/4.19/ksu_hooks_sukisu_4.19-patch
+
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
@@ -30,10 +40,7 @@ jobs:
 
       - name: Download Toolchains
         run: |
-          # تحميل GCC 4.9
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain-gcc64 || true
-          
-          # تحميل مترجم Clang جاهز ومضبوط لنظام أندرويد
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r416183b.git clang-llvm || true
 
       - name: Configure and Compile Kernel
@@ -54,12 +61,10 @@ jobs:
 
       - name: Apply SukiSU KernelPatch (KPM)
         run: |
-          # تحميل أدوات الإصدار v0.13.0 من مستودع SukiSU_KernelPatch_patch
-          wget https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/v0.13.0/kptools-linux
-          wget https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/v0.13.0/kpimg
-          chmod +x kptools-linux
+          cd ${{ github.workspace }}
+          # استخدام الأدوات المتوفرة داخل مجلد kpm بمستودع SukiSU_patch
+          chmod +x sukisu_patch/kpm/kptools
           
-          # تحديد مسار صورة الكيرنل الناتجة
           KERNEL_IMAGE="out/arch/arm64/boot/Image"
           if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
             KERNEL_IMAGE="out/arch/arm64/boot/Image.gz-dtb"
@@ -67,15 +72,14 @@ jobs:
             KERNEL_IMAGE="out/arch/arm64/boot/Image.gz"
           fi
           
-          # حقن ورقع الكيرنل باستخدام kptools و kpimg
-          ./kptools-linux -p -i "$KERNEL_IMAGE" -k kpimg -o patched_image
+          # الحقن باستخدام أداة kptools و kpimg المحلية
+          sukisu_patch/kpm/kptools -p -i "$KERNEL_IMAGE" -k sukisu_patch/kpm/kpimg -o patched_image
 
       - name: Pack with AnyKernel3
         run: |
           git clone https://github.com/Kernel-SU/AnyKernel3 -b master anykernel
           rm -rf anykernel/.git
           
-          # وضع الكيرنل المرقع داخل حزمة الفلاش
           if [ -f "patched_image" ]; then
             cp patched_image anykernel/Image
           else
