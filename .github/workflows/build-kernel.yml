@@ -47,10 +47,11 @@ jobs:
             sed -i '/config MTK_CMDQ/,/tristate/ s/tristate/bool/' drivers/soc/mediatek/Kconfig || true
           fi
           
-          # إصلاح وتوافق أنواع Kconfig ومحاكاة التكوين تلقائياً
+          # محاكاة التكوين وتحديث التهيئة
           make O=out olddefconfig || true
           
-          # تفعيل المتطلبات الإجبارية لـ KernelPatch
+          # تفعيل المتطلبات الإجبارية لـ SukiSU-Ultra وحسب التوثيق الرسمي لنواة 4.19
+          scripts/config --file out/.config --enable CONFIG_KPM
           scripts/config --file out/.config --enable CONFIG_KALLSYMS
           scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
           
