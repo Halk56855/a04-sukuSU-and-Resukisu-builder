@@ -1,42 +1,40 @@
-name: Build SukiSU-Ultra Kernel for Samsung A04
+name: Build Android Kernel
 
 on:
-  workflow_dispatch: # يتيح تشغيل البناء يدوياً من تبويب Actions في قيت هب
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
 
 jobs:
-  build:
-    runs-on: ubuntu-22.04
+  build-kernel:
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository / Setup Environment
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache flex g++-multilib gcc-multilib git libssl-dev libncurses5-dev python3 zlib1g-dev libelf-dev
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex \
+            g++-multilib gcc-multilib git gnupg gperf \
+            lib32ncurses5-dev lib32z1-dev libelf-dev \
+            liblz4-tool libncurses5-dev libssl-dev \
+            libxml2 libxml2-utils lzop rsync schedtool \
+            squashfs-tools xsltproc yasm zlib1g-dev
 
-      - name: Clone Samsung A04 Kernel Source
+      - name: Clone Clang Toolchain
         run: |
-          git clone -b latest-B https://github.com/rsuntk-oss/android_kernel_samsung_a04m.git kernel-source
+          mkdir -p toolchain/clang/host/linux-x86
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r383902.git toolchain/clang/host/linux-x86/clang-r383902
 
-      - name: Setup SukiSU-Ultra (Built-in)
+      - name: Build Kernel
         run: |
-          cd kernel-source
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
-
-      - name: Configure Kernel with a04_defconfig
-        run: |
-          cd kernel-source
           export ARCH=arm64
           export SUBARCH=arm64
-          # يمكنك استخدام مسار المترجم (Toolchain) الخاص بك هنا إذا لزم الأمر
-          make O=out a04_defconfig
-
-      - name: Compile Kernel
-        run: |
-          cd kernel-source
-          export ARCH=arm64
-          export SUBARCH=arm64
-          # بدء عملية البناء باستخدام كافة أنوية المعالج المتاحة
-          make O=out -j$(nproc)
+          export PATH="${PWD}/toolchain/clang/host/linux-x86/clang-r383902/bin:${PATH}"
+          
+          # استبدل a04_defconfig باسم ملف التكوين (defconfig) الخاص بنواتك
+          make O=out CC=clang a04_defconfig
+          make -j$(nproc) O=out CC=clang
