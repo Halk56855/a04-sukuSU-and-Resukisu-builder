@@ -33,39 +33,60 @@ jobs:
           echo "clang-r383902/" >> .git/info/sparse-checkout
           git pull --depth=1 origin main
 
-      - name: Inject ReSukiSU, Official Patches, and SuFS Safely
+      - name: Inject ReSukiSU and SuFS with Smart Error Correction
         run: |
           cd kernel_source
           git reset --hard
           git clean -fd
 
-          # 1. دمج ReSukiSU الأساسي
+          # 1. تنظيف أي تعديلات سابقة خاطئة في Kconfig
+          git checkout drivers/soc/mediatek/Kconfig drivers/Kconfig 2>/dev/null || true
+
+          # 2. دمج ReSukiSU الأساسي
           git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU.git resukisu_repo
           if [ -d "drivers" ]; then
             mkdir -p drivers/ksu
             cp -rf resukisu_repo/kernel/* drivers/ksu/
           fi
 
-          # 2. إضافة تضمين KSU في drivers/Kconfig بشكل آمن
+          # 3. ضمان وجود ملف Kconfig سليم ومتوافق لـ KSU
+          if [ ! -f "drivers/ksu/Kconfig" ]; then
+            cat << 'EOF' > drivers/ksu/Kconfig
+          menu "KernelSU Options"
+          config KSU
+              bool "KernelSU support"
+              default y
+          config KSU_MANUAL_HOOK
+              bool "Manual hook for KernelSU"
+              default y
+          config KSU_SUSFS
+              bool "SuFS support for KernelSU"
+              default y
+          endmenu
+          EOF
+          fi
+
+          # 4. إضافة تضمين KSU بأمان تام في نهاية ملف drivers/Kconfig دون كسر القواعد النحوية
           if [ -f "drivers/Kconfig" ]; then
             if ! grep -q "drivers/ksu/Kconfig" drivers/Kconfig; then
-              sed -i '$i source "drivers/ksu/Kconfig"' drivers/Kconfig || true
+              echo "" >> drivers/Kconfig
+              echo 'source "drivers/ksu/Kconfig"' >> drivers/Kconfig
             fi
           fi
 
-          # 3. إضافة Makefile الداخلي لـ ksu
+          # 5. إضافة Makefile الداخلي لـ ksu إذا لم يكن موجوداً
           if [ ! -f "drivers/ksu/Makefile" ]; then
             echo "obj-\$(CONFIG_KSU) += ksu.o" > drivers/ksu/Makefile
             echo "ksu-y := $(subst drivers/ksu/,,$(wildcard drivers/ksu/*.c))" >> drivers/ksu/Makefile
           fi
 
-          # 4. سحب وتطبيق رقعة ReSukiSU باستخدام --3way لتجنب التعارضات
+          # 6. تطبيق رقعة ReSukiSU مع تفعيل وضع الدمج الثلاثي لتفادي التعارضات
           git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU_Patches.git patches_repo
           if [ -f "patches_repo/scope-minimized/kernel-4.19.patch" ]; then
             git apply --3way --whitespace=fix patches_repo/scope-minimized/kernel-4.19.patch || true
           fi
 
-          # 5. دمج SuFS لنواة 4.19 مع التعامل المرن مع الرقع
+          # 7. دمج SuFS لنواة 4.19
           git clone --depth=1 -b kernel-4.19 https://gitlab.com/simonpunk/susfs4ksu.git susfs_repo
           if [ -d "susfs_repo/kernel_patches" ]; then
             cp -f susfs_repo/kernel_patches/fs/* fs/ || true
@@ -77,15 +98,8 @@ jobs:
             fi
           fi
 
-          # تنظيف ملفات الرفض الناتجة عن الرقع لمنع فشل البناء
+          # تنظيف ملفات الرفض تلقائياً
           find . -name "*.rej" -delete || true
-
-      - name: Clean MediaTek Kconfig Conflicts
-        run: |
-          cd kernel_source
-          if [ -f "drivers/soc/mediatek/Kconfig" ]; then
-            sed -i '/config MTK_CMDQ/,/tristate/d' drivers/soc/mediatek/Kconfig || true
-          fi
 
       - name: Configure Defconfig for KSU and SuFS
         run: |
