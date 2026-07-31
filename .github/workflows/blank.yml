@@ -20,17 +20,31 @@ jobs:
         run: |
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 -b android-11.0.0_r30 toolchain
 
-      - name: Inject ReSukiSU via Official Script
+      - name: Find Kernel Root and Inject ReSukiSU
         run: |
-          # تنفيذ السكريبت الرسمي من الجذر الرئيسي للنواة حصراً
-          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+          # البحث تلقائياً عن مكان مجلد drivers والانتقال إلى مجلد الجذر الخاص بالنواة
+          KERNEL_PATH=$(find . -type d -name "drivers" -print -quit | xargs dirname)
+          if [ -d "$KERNEL_PATH" ]; then
+            echo "Found kernel root at: $KERNEL_PATH"
+            cd "$KERNEL_PATH"
+            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+          else
+            echo "Error: Kernel drivers directory not found anywhere!"
+            exit 1
+          fi
 
       - name: Add Manual Hooks to Defconfig
         run: |
-          # تحديد مسار ملف الـ defconfig وتفعيل المتطلبات الخاصة بالنواة القديمة
-          DEFCONFIG_FILE="arch/arm64/configs/mtk_defconfig" # استبدل الاسم بملف الـ defconfig الفعلي لمستودعك إن وجد غير ذلك
-          echo "CONFIG_KSU=y" >> $DEFCONFIG_FILE
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> $DEFCONFIG_FILE
+          # البحث تلقائياً عن ملف التكوين defconfig وتعديله بغض النظر عن مكانه
+          DEFCONFIG_FILE=$(find . -name "mtk_defconfig" -o -name "*_defconfig" | head -n 1)
+          if [ -n "$DEFCONFIG_FILE" ]; then
+            echo "Found defconfig at: $DEFCONFIG_FILE"
+            echo "CONFIG_KSU=y" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG_FILE"
+          else
+            echo "Error: Defconfig file not found!"
+            exit 1
+          fi
 
       - name: Compile Kernel
         run: |
@@ -39,11 +53,17 @@ jobs:
           export PATH=$PWD/toolchain/bin:$PATH
           export CROSS_COMPILE=aarch64-linux-android-
 
-          make mtk_defconfig
+          # الانتقال إلى مسار النواة وبدء عملية التجميع
+          KERNEL_PATH=$(find . -type d -name "drivers" -print -quit | xargs dirname)
+          cd "$KERNEL_PATH"
+
+          # العثور على اسم ملف التكوين لبدء الإعداد والبناء
+          DEFCONFIG_NAME=$(basename $(find . -name "mtk_defconfig" -o -name "*_defconfig" | head -n 1))
+          make $DEFCONFIG_NAME
           make -j$(nproc)
 
       - name: Upload Built Kernel Image
         uses: actions/upload-artifact@v4
         with:
           name: Samsung-A04-Kernel-ReSukiSU
-          path: arch/arm64/boot/Image.gz-dtb
+          path: '**/arch/arm64/boot/Image.gz-dtb'
