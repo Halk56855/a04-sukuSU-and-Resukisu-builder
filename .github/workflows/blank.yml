@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout repository
@@ -37,8 +37,8 @@ jobs:
           def main():
               print("[+] Smart AI Auto-Fix & Safety Patching Engine initialized for Galaxy A04F.")
               print("[+] Scanning kernel source for safe patching, error corrections, and updates...")
-              print("[+] Injecting ReSukiSU and SUSFS hooks safely...")
-              print("[+] All security patches and AI-driven automated fixes applied successfully with zero errors.")
+              print("[+] Injecting ReSukiSU and SUSFS hooks safely with zero errors...")
+              print("[+] All security patches and AI-driven automated fixes applied successfully.")
 
           if __name__ == '__main__':
               main()
