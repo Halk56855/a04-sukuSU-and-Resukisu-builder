@@ -1,4 +1,4 @@
-name: ReSukiSU + SUSFS Kernel Builder
+name: ReSukiSU v4.1.0 Kernel Builder
 
 on:
   workflow_dispatch:
@@ -17,9 +17,9 @@ on:
         default: 'latest-B'
         type: string
       ksu_version:
-        description: 'ReSukiSU branch (susfs-rksu-master)'
+        description: 'ReSukiSU version (tag or branch)'
         required: true
-        default: 'susfs-rksu-master'
+        default: 'v4.1.0'
         type: string
       manager_package:
         description: 'Manager app package (for hiding)'
@@ -29,7 +29,7 @@ on:
       kernel_version_suffix:
         description: 'Kernel version suffix (blank=none)'
         required: false
-        default: '-resukisu-v2'
+        default: '-resukisu-v4.1.0'
         type: string
 
 concurrency:
@@ -117,7 +117,7 @@ jobs:
             done
           fi
 
-      - name: Integrate SUSFS + ReSukiSU
+      - name: Integrate SUSFS + ReSukiSU v4.1.0
         run: |
           cd "$KERNEL_DIR"
           
@@ -181,14 +181,15 @@ jobs:
             rm -rf drivers/misc/mediatek/connectivity/.git
           fi
 
-          # === Step 6: Integrate ReSukiSU ===
-          echo "=== Integrating ReSukiSU (${{ inputs.ksu_version }}) ==="
-          curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/${{ inputs.ksu_version }}/kernel/setup.sh" \
+          # === Step 6: Integrate ReSukiSU v4.1.0 ===
+          echo "=== Integrating ReSukiSU ${{ inputs.ksu_version }} ==="
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/${{ inputs.ksu_version }}/kernel/setup.sh" \
             | bash -s "${{ inputs.ksu_version }}" 2>&1 || {
             KSU_TMP="${SUSFS_DIR}/ksu_tmp"
             mkdir -p "$KSU_TMP"
             git clone --depth=1 -b "${{ inputs.ksu_version }}" \
-              https://github.com/rsuntk/KernelSU.git "$KSU_TMP"
+              https://github.com/ReSukiSU/ReSukiSU.git "$KSU_TMP" || \
+            git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU.git "$KSU_TMP"
             cp -r "$KSU_TMP" "$KERNEL_DIR/KernelSU"
             ln -sf "../../KernelSU/kernel" "$KERNEL_DIR/drivers/kernelsu" 2>/dev/null || true
             rm -rf "$KSU_TMP"
@@ -276,17 +277,17 @@ jobs:
           SRC_IMG="out/arch/arm64/boot/Image"
           cp "$SRC_IMG" "$OUTPUT_DIR/Image"
           cd "$OUTPUT_DIR"
-          tar -cvf "ReSukiSU_A04_boot.tar" "Image"
-          md5sum "ReSukiSU_A04_boot.tar" | cut -d' ' -f1 | tr -d '\n' >> "ReSukiSU_A04_boot.tar"
-          mv "ReSukiSU_A04_boot.tar" "ReSukiSU_A04_boot.tar.md5"
+          tar -cvf "ReSukiSU_v4.1.0_A04_boot.tar" "Image"
+          md5sum "ReSukiSU_v4.1.0_A04_boot.tar" | cut -d' ' -f1 | tr -d '\n' >> "ReSukiSU_v4.1.0_A04_boot.tar"
+          mv "ReSukiSU_v4.1.0_A04_boot.tar" "ReSukiSU_v4.1.0_A04_boot.tar.md5"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: resukisu-kernel-a04
+          name: resukisu-v4.1.0-kernel-a04
           path: |
             ${{ env.OUTPUT_DIR }}/Image
-            ${{ env.OUTPUT_DIR }}/ReSukiSU_A04_boot.tar.md5
+            ${{ env.OUTPUT_DIR }}/ReSukiSU_v4.1.0_A04_boot.tar.md5
             ${{ env.OUTPUT_DIR }}/build.log
           if-no-files-found: error
           retention-days: 30
