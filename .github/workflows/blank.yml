@@ -20,11 +20,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc git python3 wget zip make clang llvm
 
-      - name: Setup Clang Toolchain (clang-r383902)
+      - name: Setup Custom Clang Toolchain
         run: |
           cd kernel_source
-          mkdir -p toolchain/clang/host/linux-x86
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r383902.git toolchain/clang/host/linux-x86/clang-r383902
+          # استنساخ أداة الترجمة المخصصة التي قمت بتحديدها
+          git clone --depth=1 https://github.com/jwinarske/clang_toolchain.git toolchain
 
       - name: Inject ReSukiSU, Official Patches, and SuFS
         run: |
@@ -39,7 +39,7 @@ jobs:
             cp -rf resukisu_repo/kernel/* drivers/ksu/
           fi
 
-          # 2. سحب وتطبيق الرقعة الرسمية الخاصة بنواة 4.19 من ReSukiSU_Patches
+          # 2. سحب وتطبيق الرقعة الرسمية لنواة 4.19
           git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU_Patches.git patches_repo
           if [ -f "patches_repo/scope-minimized/kernel-4.19.patch" ]; then
             echo "Applying official ReSukiSU kernel-4.19 patch..."
@@ -79,7 +79,7 @@ jobs:
           cd kernel_source
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH=$PWD/toolchain/clang/host/linux-x86/clang-r383902/bin:$PATH
+          export PATH=$PWD/toolchain/bin:$PATH
           export CC=clang
           export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-android-
