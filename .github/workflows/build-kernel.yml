@@ -42,7 +42,12 @@ jobs:
           make O=out mrproper || true
           make O=out mtk_defconfig || make O=out a04_defconfig || true
           
-          # إصلاح تضارب تعريف MTK_CMDQ وتوحيد نوع البيانات في ملفات Kconfig تلقائياً
+          # تنظيف تلقائي لجميع ملفات Kconfig وإزالة الأحرف غير المدعومة لتفادي أخطاء olddefconfig
+          find drivers/ -name "Kconfig" | while read -r file; do
+            tr -cd '\11\12\15\40-\176' < "$file" > "$file.tmp" && mv "$file.tmp" "$file" || true
+          done
+          
+          # إصلاح تضارب تعريف MTK_CMDQ تلقائياً
           if [ -f "drivers/soc/mediatek/Kconfig" ]; then
             sed -i '/config MTK_CMDQ/,/tristate/ s/tristate/bool/' drivers/soc/mediatek/Kconfig || true
           fi
@@ -78,7 +83,7 @@ jobs:
             KERNEL_IMAGE="out/arch/arm64/boot/Image.gz"
           fi
           
-          # حقن ورقع النواة بأدوات SukiSU-Ultra
+          # حقن ورقع النواة بأدوات SukiSU-Ultra الأصلية
           ./kptools-linux -p -i "$KERNEL_IMAGE" -k kpimg -o patched_image
 
       - name: Pack with AnyKernel3
