@@ -38,11 +38,16 @@ jobs:
           export SUBARCH=arm64
           export PATH="${{ github.workspace }}/toolchain-gcc64/bin:$PATH"
           
-          # تنظيف الملفات السابقة وضبط التهيئة لمعالج MediaTek Helio P35
+          # تنظيف الملفات السابقة وضبط التهيئة لمعالج MediaTek
           make O=out mrproper || true
           make O=out mtk_defconfig || make O=out a04_defconfig || true
           
-          # إصلاح وتوافق أنواع Kconfig ومزامنتها تلقائياً
+          # إصلاح تضارب تعريف MTK_CMDQ وتوحيد نوع البيانات في ملفات Kconfig تلقائياً
+          if [ -f "drivers/soc/mediatek/Kconfig" ]; then
+            sed -i '/config MTK_CMDQ/,/tristate/ s/tristate/bool/' drivers/soc/mediatek/Kconfig || true
+          fi
+          
+          # إصلاح وتوافق أنواع Kconfig ومحاكاة التكوين تلقائياً
           make O=out olddefconfig || true
           
           # تفعيل المتطلبات الإجبارية لـ KernelPatch
@@ -53,10 +58,10 @@ jobs:
           scripts/config --file out/.config --disable CONFIG_SDFAT_FS || true
           scripts/config --file out/.config --disable CONFIG_SDFAT_SUPPORT || true
           
-          # مزامنة نهائية للتهيئة وضمان عدم وجود أخطاء في Kconfig
+          # مزامنة نهائية للتهيئة وضمان سلامتها
           make O=out olddefconfig
           
-          # بناء النواة باستخدام مترجم GCC وتوافق تام مع تعريفات MediaTek
+          # بناء النواة باستخدام مترجم GCC وتوافق تام مع تعريفات MediaTek Drivers
           make O=out -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-w"
 
       - name: Apply SukiSU KernelPatch (KPM)
