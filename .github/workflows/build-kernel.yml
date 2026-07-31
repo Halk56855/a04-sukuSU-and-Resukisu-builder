@@ -71,13 +71,14 @@ jobs:
           # بدء البناء البرمجي للنواة بتوافق تام مع معالجات MediaTek
           make O=out -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-w"
 
+      - name: Clone SukiSU-Ultra Tools Repository
+        run: |
+          # استنساخ المستودع الرسمي مباشرة لتفادي مشاكل روابط التحميل 404 نهائياً
+          git clone --depth=1 https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch.git suki-tools
+          chmod +x suki-tools/kptools-linux
+
       - name: Apply SukiSU KernelPatch (KPM)
         run: |
-          # تصحيح روابط تحميل أدوات SukiSU-Ultra الصحيحة (المصدر: ShirkNeko)
-          wget https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/v0.13.0/kptools-linux
-          wget https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/v0.13.0/kpimg
-          chmod +x kptools-linux
-          
           KERNEL_IMAGE="out/arch/arm64/boot/Image"
           if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
             KERNEL_IMAGE="out/arch/arm64/boot/Image.gz-dtb"
@@ -85,8 +86,8 @@ jobs:
             KERNEL_IMAGE="out/arch/arm64/boot/Image.gz"
           fi
           
-          # حقن ورقع النواة بأدوات SukiSU-Ultra الأصلية
-          ./kptools-linux -p -i "$KERNEL_IMAGE" -k kpimg -o patched_image
+          # حقن ورقع النواة باستخدام الأدوات الرسمية المستنسخة
+          ./suki-tools/kptools-linux -p -i "$KERNEL_IMAGE" -k suki-tools/kpimg -o patched_image
 
       - name: Pack with AnyKernel3
         run: |
