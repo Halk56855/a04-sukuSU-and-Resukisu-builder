@@ -13,7 +13,7 @@ jobs:
 
       - name: Clone Kernel Source
         run: |
-          # استبدل الرابط أدناه برابط شيفرة مصدر النواة الفعلي لهاتف سامسونج A04
+          # تأكد من أن الرابط أدناه صحيح ومستودع النواة عام (Public)
           git clone --depth=1 https://github.com/Halk5685/samsung_a04_kernel.git kernel_source
 
       - name: Install Build Dependencies
@@ -28,11 +28,8 @@ jobs:
       - name: Inject ReSukiSU
         run: |
           cd kernel_source
-          
-          # استنساخ مستودع ReSukiSU الرسمي
           git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU.git resukisu_repo
           
-          # دمج ملفات النواة الخاصة بـ ReSukiSU داخل مجلد drivers للنواة
           if [ -d "drivers" ]; then
             mkdir -p drivers/ksu
             cp -rf resukisu_repo/kernel/* drivers/ksu/
