@@ -30,8 +30,11 @@ jobs:
 
       - name: Download Toolchains
         run: |
+          # تحميل GCC 4.9
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain-gcc64 || true
-          git clone --depth=1 https://github.com/llvm/llvm-project.git --sparse clang-llvm || true
+          
+          # استبدال مستودع LLVM المصدري بمترجم Clang جاهز ومضبوط لنظام أندرويد
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r416183b.git clang-llvm || true
 
       - name: Configure and Compile Kernel
         run: |
@@ -46,8 +49,8 @@ jobs:
           scripts/config --file out/.config --enable CONFIG_KALLSYMS
           scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
           
-          # بناء الكيرنل الخام
-          make O=out -j$(nproc) ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-android-
+          # بناء الكيرنل الخام باستخدام Clang
+          make O=out -j$(nproc) ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android-
 
       - name: Apply SukiSU KernelPatch (KPM)
         run: |
