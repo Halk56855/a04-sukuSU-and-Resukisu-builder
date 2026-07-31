@@ -18,47 +18,38 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc git python3 wget zip
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev bc git python3 wget zip make clang llvm
 
-      - name: Setup Toolchain (GCC/Clang)
+      - name: Setup Clang Toolchain (clang-r383902)
         run: |
-          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 -b android-11.0.0_r30 toolchain
+          cd kernel_source
+          mkdir -p toolchain/clang/host/linux-x86
+          # استنساخ حزمة Clang المطلوبة خصيصاً لتوافق نواة سامسونج وميديا تك
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r383902.git toolchain/clang/host/linux-x86/clang-r383902
 
       - name: Inject ReSukiSU and SuFS
         run: |
           cd kernel_source
+          git reset --hard
+          git clean -fd
 
-          # 1. استنساخ ودمج ReSukiSU
+          # 1. دمج ReSukiSU
           git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU.git resukisu_repo
           if [ -d "drivers" ]; then
             mkdir -p drivers/ksu
             cp -rf resukisu_repo/kernel/* drivers/ksu/
-          else
-            echo "Error: drivers directory not found!"
-            exit 1
           fi
 
-          # 2. استنساخ مستودع susfs4ksu للفرع kernel-4.19
+          # 2. دمج SuFS
           git clone --depth=1 -b kernel-4.19 https://gitlab.com/simonpunk/susfs4ksu.git susfs_repo
-          
           if [ -d "susfs_repo/kernel_patches" ]; then
             cp -f susfs_repo/kernel_patches/fs/* fs/
             cp -f susfs_repo/kernel_patches/include/linux/* include/linux/
             
             PATCH_FILE=$(find susfs_repo/kernel_patches -name "*.patch" | head -n 1)
             if [ -n "$PATCH_FILE" ]; then
-              echo "Applying SuFS patch: $PATCH_FILE"
-              git apply "$PATCH_FILE" || echo "Patch application had warnings or already applied."
+              git apply "$PATCH_FILE" || true
             fi
-          fi
-
-      - name: Fix Kconfig Conflicts
-        run: |
-          cd kernel_source
-          # معالجة مشكلة إعادة تعريف MTK_CMDQ لمنع توقف البناء
-          if [ -f "drivers/soc/mediatek/Kconfig" ]; then
-            sed -i '/config MTK_CMDQ/,/tristate/d' drivers/soc/mediatek/Kconfig || true
-            echo "Kconfig conflicts resolved."
           fi
 
       - name: Configure Defconfig for KSU and SuFS
@@ -82,16 +73,19 @@ jobs:
           cd kernel_source
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH=$PWD/../toolchain/bin:$PATH
+          export PATH=$PWD/toolchain/clang/host/linux-x86/clang-r383902/bin:$PATH
+          export CC=clang
+          export CLANG_TRIPLE=aarch64-linux-gnu-
           export CROSS_COMPILE=aarch64-linux-android-
+          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
           DEFCONFIG_FILE=$(find arch/arm64/configs -name "*_defconfig" | head -n 1)
           DEFCONFIG_NAME=$(basename "$DEFCONFIG_FILE")
-          make $DEFCONFIG_NAME
-          make -j$(nproc)
+          make O=out $DEFCONFIG_NAME
+          make O=out -j$(nproc)
 
       - name: Upload Built Kernel Image
         uses: actions/upload-artifact@v4
         with:
           name: Samsung-A04-Kernel-ReSukiSU-SuFS
-          path: 'kernel_source/arch/arm64/boot/Image.gz-dtb'
+          path: 'kernel_source/out/arch/arm64/boot/Image.gz-dtb'
