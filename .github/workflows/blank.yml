@@ -12,41 +12,35 @@ jobs:
 
       - name: Download boot.img from Release
         run: |
-          # تحميل ملف boot.img مباشرة من آخر إصدار في مستودعك
+          # تحميل ملف boot.img من مستودع Boot-a04
           curl -L https://github.com/Halk56855/Boot-a04/releases/latest/download/boot.img -O
           ls -lh boot.img
 
-      - name: Extract Kernel Image using Magiskboot
+      - name: Clone Magiskboot and Unpack
         run: |
-          # تحميل أداة فك وتجميع صور الإقلاع magiskboot
-          wget https://github.com/xiaoxindada/magiskboot_binary/raw/master/magiskboot -O magiskboot
+          # سحب أداة magiskboot من مستودعك الخاص
+          git clone https://github.com/Halk56855/Magiskboot.git magiskboot_repo
+          cp magiskboot_repo/magiskboot ./magiskboot
           chmod +x magiskboot
           
-          # فك ملف boot.img لاستخراج نواة Image الخام
+          # فك ملف boot.img لاستخراج نواة kernel الخام
           ./magiskboot unpack boot.img
           ls -la
 
-      - name: Apply SukiSU-Ultra Patch
+      - name: Verify Kernel Image
         run: |
-          # تحميل أدوات الرقعة kptools
-          wget https://github.com/KernelPatch/KPM/releases/latest/download/kptools-linux -O kptools
-          chmod +x kptools
-          
-          # ملاحظة: إذا كنت تملك ملف kpimg الخاص برقعة SukiSU، قم بتوفيره أو سحبه هنا، 
-          # أو تطبيق الرقعة المباشرة على ملف kernel (Image) المستخرج
-          # مثال تطبيق الرقعة:
-          # ./kptools -p -i kernel -k kpimg -s Kahg13579 -o patched_image
-          # cp patched_image kernel
+          # التحقق من وجود ملف النواة المستخرج
+          ls -la kernel
 
-      - name: Repack and Package with AnyKernel3
+      - name: Package with AnyKernel3
         run: |
-          # استنساخ حزمة AnyKernel3 لتغليفه للتفليش
+          # استنساخ حزمة التثبيت AnyKernel3
           git clone https://github.com/DaniTheSillyFem/AnyKernel3-a04.git AnyKernel3
           
-          # نقل النواة (سواء كانت مرقعة أو أصلية للاختبار) إلى مجلد AnyKernel3 باسم Image
+          # نقل النواة المستخرجة إلى مجلد الحزمة باسم Image
           cp kernel AnyKernel3/Image
           
-          # ضغط الملفات بصيغة ZIP جاهزة للتفليش عبر الريكفري
+          # ضغط الحزمة بصيغة ZIP جاهزة للتفليش
           cd AnyKernel3
           zip -r ../SukiSU-Ultra-A04-Boot-Final.zip *
 
