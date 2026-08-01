@@ -81,15 +81,22 @@ jobs:
         run: |
           chmod +x tools-dir/kptools-linux
           
-          KERNEL_IMAGE="out/arch/arm64/boot/Image"
-          if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
-            KERNEL_IMAGE="out/arch/arm64/boot/Image.gz-dtb"
-          elif [ -f "out/arch/arm64/boot/Image.gz" ]; then
-            KERNEL_IMAGE="out/arch/arm64/boot/Image.gz"
+          # تجهيز النواة الخام والتأكد من فك ضغطها إن وجدت بصيغة .gz
+          TARGET_IMAGE="out/arch/arm64/boot/Image"
+          
+          if [ ! -f "$TARGET_IMAGE" ] && [ -f "out/arch/arm64/boot/Image.gz" ]; then
+            gunzip -c out/arch/arm64/boot/Image.gz > "$TARGET_IMAGE"
+          elif [ ! -f "$TARGET_IMAGE" ] && [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
+            gunzip -c out/arch/arm64/boot/Image.gz-dtb > "$TARGET_IMAGE" || cp out/arch/arm64/boot/Image.gz-dtb "$TARGET_IMAGE"
           fi
           
-          # استخدام المفتاح الفائق الخاص بك Kahg13579
-          ./tools-dir/kptools-linux -p -i "$KERNEL_IMAGE" -k tools-dir/kpimg -s Kahg13579 -o patched_image
+          if [ ! -f "$TARGET_IMAGE" ]; then
+            echo "Error: Uncompressed Kernel Image not found!"
+            exit 1
+          fi
+          
+          # حقن النواة الخام مع المفتاح السري Kahg13579
+          ./tools-dir/kptools-linux -p -i "$TARGET_IMAGE" -k tools-dir/kpimg -s Kahg13579 -o patched_image
 
       - name: Pack with Custom AnyKernel3 for A04
         run: |
