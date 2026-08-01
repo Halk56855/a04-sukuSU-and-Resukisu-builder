@@ -77,7 +77,7 @@ jobs:
           # بدء البناء البرمجي للنواة بتوافق تام مع معالجات MediaTek
           make O=out -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-w"
 
-      - name: Apply SukiSU KernelPatch (KPM) using Tools Repo
+      - name: Apply SukiSU KernelPatch (KPM) with Superkey
         run: |
           chmod +x tools-dir/kptools-linux
           
@@ -88,8 +88,8 @@ jobs:
             KERNEL_IMAGE="out/arch/arm64/boot/Image.gz"
           fi
           
-          # حقن ورقع النواة باستخدام الملفات من المستودع العام
-          ./tools-dir/kptools-linux -p -i "$KERNEL_IMAGE" -k tools-dir/kpimg -o patched_image
+          # استخدام المفتاح الفائق الخاص بك Kahg13579
+          ./tools-dir/kptools-linux -p -i "$KERNEL_IMAGE" -k tools-dir/kpimg -s Kahg13579 -o patched_image
 
       - name: Pack with Custom AnyKernel3 for A04
         run: |
