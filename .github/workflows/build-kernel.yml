@@ -17,11 +17,20 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
 
-      - name: Checkout Kernel Source (DaniTheSillyFem/kernel_samsung_a04)
+      - name: Checkout Repository (Including Kernel & Local Tools)
         uses: actions/checkout@v4
         with:
           repository: DaniTheSillyFem/kernel_samsung_a04
           ref: linux-4.19.y
+          submodules: true
+
+      - name: Checkout Workflow Repository Files
+        uses: actions/checkout@v4
+        with:
+          repository: Halk5855/a04-sukusu-and-Resukisu-Ultra # استبدل باسم مستودعك الحالي إذا لزم الأمر أو اترك الخطوة إذا كنت تنفذها داخل نفس المستودع
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: repo-files
+          persist-credentials: false
 
       - name: Install Build Dependencies
         run: |
@@ -61,7 +70,7 @@ jobs:
           scripts/config --file out/.config --enable CONFIG_KALLSYMS
           scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
           
-          # تعطيل نظم الملفات المتعارضة لتفادي أخطاء التجميع
+          # تعطيل نظم الملفات المتعارضة تفادياً لأخطاء التجميع
           scripts/config --file out/.config --disable CONFIG_SDFAT_FS || true
           scripts/config --file out/.config --disable CONFIG_SDFAT_SUPPORT || true
           
@@ -71,11 +80,10 @@ jobs:
           # بدء البناء البرمجي للنواة بتوافق تام مع معالجات MediaTek
           make O=out -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-w"
 
-      - name: Download SukiSU-Ultra Tools and Apply Patch (KPM)
+      - name: Apply SukiSU KernelPatch (KPM) using Local Files
         run: |
-          wget https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/v0.13.0/kptools-linux
-          wget https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/v0.13.0/kpimg
-          chmod +x kptools-linux
+          # الانتقال إلى مسار الأدوات المرفوعة محلياً
+          chmod +x repo-files/kptools-linux
           
           KERNEL_IMAGE="out/arch/arm64/boot/Image"
           if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
@@ -84,12 +92,11 @@ jobs:
             KERNEL_IMAGE="out/arch/arm64/boot/Image.gz"
           fi
           
-          # حقن ورقع النواة بأدوات SukiSU-Ultra الأصلية
-          ./kptools-linux -p -i "$KERNEL_IMAGE" -k kpimg -o patched_image
+          # تنفيذ عملية الرقع باستخدام الملفات الموجودة في المستودع
+          ./repo-files/kptools-linux -p -i "$KERNEL_IMAGE" -k repo-files/kpimg -o patched_image
 
       - name: Pack with Custom AnyKernel3 for A04
         run: |
-          # استنساخ مستودع AnyKernel3 المخصص لجهاز Galaxy A04
           git clone https://github.com/DaniTheSillyFem/AnyKernel3-a04.git -b master anykernel
           rm -rf anykernel/.git
           
