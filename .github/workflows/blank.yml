@@ -15,14 +15,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git libncurses5-dev libssl-dev python3 zlib1g-dev libelf-dev
 
-      - name: Clone SukiSU-Ultra Patch Repository
+      - name: Setup SukiSU-Ultra Source Integration
         run: |
-          git clone https://github.com/Halk56855/SukiSU-Ultra-path-4.19.git sukisu_patch_repo
-
-      - name: Apply SukiSU 4.19 Patch to Source
-        run: |
-          # الباتش موجود في الجذر الرئيسي للمستودع الجديد مباشرة
-          git apply sukisu_patch_repo/ksu_hooks_sukisu_4.19-patch
+          # تنفيذ أمر التثبيت الرسمي لدمج SukiSU-Ultra في مصدر النواة
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
 
       - name: Setup Toolchain
         run: |
