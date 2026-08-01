@@ -17,20 +17,17 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
 
-      - name: Checkout Repository (Including Kernel & Local Tools)
+      - name: Checkout Kernel Source (DaniTheSillyFem/kernel_samsung_a04)
         uses: actions/checkout@v4
         with:
           repository: DaniTheSillyFem/kernel_samsung_a04
           ref: linux-4.19.y
-          submodules: true
 
-      - name: Checkout Workflow Repository Files
+      - name: Checkout Tools Repository (Halk56855/Tools-SukiSU-Ultra)
         uses: actions/checkout@v4
         with:
-          repository: Halk5855/a04-sukusu-and-Resukisu-Ultra # استبدل باسم مستودعك الحالي إذا لزم الأمر أو اترك الخطوة إذا كنت تنفذها داخل نفس المستودع
-          token: ${{ secrets.GITHUB_TOKEN }}
-          path: repo-files
-          persist-credentials: false
+          repository: Halk56855/Tools-SukiSU-Ultra
+          path: tools-dir
 
       - name: Install Build Dependencies
         run: |
@@ -80,10 +77,9 @@ jobs:
           # بدء البناء البرمجي للنواة بتوافق تام مع معالجات MediaTek
           make O=out -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-w"
 
-      - name: Apply SukiSU KernelPatch (KPM) using Local Files
+      - name: Apply SukiSU KernelPatch (KPM) using Tools Repo
         run: |
-          # الانتقال إلى مسار الأدوات المرفوعة محلياً
-          chmod +x repo-files/kptools-linux
+          chmod +x tools-dir/kptools-linux
           
           KERNEL_IMAGE="out/arch/arm64/boot/Image"
           if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
@@ -92,8 +88,8 @@ jobs:
             KERNEL_IMAGE="out/arch/arm64/boot/Image.gz"
           fi
           
-          # تنفيذ عملية الرقع باستخدام الملفات الموجودة في المستودع
-          ./repo-files/kptools-linux -p -i "$KERNEL_IMAGE" -k repo-files/kpimg -o patched_image
+          # حقن ورقع النواة باستخدام الملفات من المستودع العام
+          ./tools-dir/kptools-linux -p -i "$KERNEL_IMAGE" -k tools-dir/kpimg -o patched_image
 
       - name: Pack with Custom AnyKernel3 for A04
         run: |
