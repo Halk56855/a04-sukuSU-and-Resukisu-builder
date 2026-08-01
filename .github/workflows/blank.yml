@@ -1,48 +1,57 @@
-name: Build SukiSU-Ultra Kernel
+name: Patch Boot Image with SukiSU-Ultra
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  patch:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Compilation Environment
+      - name: Download boot.img from Release
         run: |
-          sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git libncurses5-dev libssl-dev python3 zlib1g-dev libelf-dev
+          # تحميل ملف boot.img مباشرة من آخر إصدار في مستودعك
+          curl -L https://github.com/Halk56855/Boot-a04/releases/latest/download/boot.img -O
+          ls -lh boot.img
 
-      - name: Setup SukiSU-Ultra Source Integration
+      - name: Extract Kernel Image using Magiskboot
         run: |
-          # تنفيذ أمر التثبيت الرسمي لدمج SukiSU-Ultra في مصدر النواة
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
-
-      - name: Setup Toolchain
-        run: |
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 --depth=1 toolchain
-
-      - name: Compile Kernel
-        run: |
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export PATH=$PWD/toolchain/bin:$PATH
+          # تحميل أداة فك وتجميع صور الإقلاع magiskboot
+          wget https://github.com/xiaoxindada/magiskboot_binary/raw/master/magiskboot -O magiskboot
+          chmod +x magiskboot
           
-          make O=out a04_defconfig
-          make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android-
+          # فك ملف boot.img لاستخراج نواة Image الخام
+          ./magiskboot unpack boot.img
+          ls -la
 
-      - name: Package with AnyKernel3
+      - name: Apply SukiSU-Ultra Patch
         run: |
+          # تحميل أدوات الرقعة kptools
+          wget https://github.com/KernelPatch/KPM/releases/latest/download/kptools-linux -O kptools
+          chmod +x kptools
+          
+          # ملاحظة: إذا كنت تملك ملف kpimg الخاص برقعة SukiSU، قم بتوفيره أو سحبه هنا، 
+          # أو تطبيق الرقعة المباشرة على ملف kernel (Image) المستخرج
+          # مثال تطبيق الرقعة:
+          # ./kptools -p -i kernel -k kpimg -s Kahg13579 -o patched_image
+          # cp patched_image kernel
+
+      - name: Repack and Package with AnyKernel3
+        run: |
+          # استنساخ حزمة AnyKernel3 لتغليفه للتفليش
           git clone https://github.com/DaniTheSillyFem/AnyKernel3-a04.git AnyKernel3
-          cp out/arch/arm64/boot/Image AnyKernel3/
           
+          # نقل النواة (سواء كانت مرقعة أو أصلية للاختبار) إلى مجلد AnyKernel3 باسم Image
+          cp kernel AnyKernel3/Image
+          
+          # ضغط الملفات بصيغة ZIP جاهزة للتفليش عبر الريكفري
           cd AnyKernel3
-          zip -r ../SukiSU-Ultra-A04-Final.zip *
+          zip -r ../SukiSU-Ultra-A04-Boot-Final.zip *
 
-      - name: Upload Kernel Artifact
+      - name: Upload Flashable Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SukiSU-Ultra-Galaxy-A04
-          path: SukiSU-Ultra-A04-Final.zip
+          name: SukiSU-Ultra-Galaxy-A04-Flashable
+          path: SukiSU-Ultra-A04-Boot-Final.zip
