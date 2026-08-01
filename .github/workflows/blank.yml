@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Compilation Environment
         run: |
@@ -21,7 +21,6 @@ jobs:
 
       - name: Apply SukiSU 4.19 Patch to Source
         run: |
-          # تطبيق رقعة الكود المصدري مباشرة على الشفرة
           git apply SukiSU_patch/4.19/ksu_hooks_sukisu_4.19-patch
 
       - name: Setup Toolchain
@@ -46,7 +45,7 @@ jobs:
           zip -r ../SukiSU-Ultra-A04-Final.zip *
 
       - name: Upload Kernel Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: SukiSU-Ultra-Galaxy-A04
           path: SukiSU-Ultra-A04-Final.zip
