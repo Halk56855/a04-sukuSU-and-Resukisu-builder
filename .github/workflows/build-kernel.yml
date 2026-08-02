@@ -71,6 +71,10 @@ jobs:
           mkdir -p drivers/sukisu
           cp -rf /tmp/sukisu_repo/kernel/* drivers/sukisu/
           
+          # حل مشكلة ملفات uapi المفقودة لـ KPM ونسخها تلقائياً
+          mkdir -p drivers/sukisu/kpm/uapi
+          find /tmp/sukisu_repo -name "supercall.h" -exec cp -f {} drivers/sukisu/kpm/uapi/ \;
+          
           if ! grep -q "drivers/sukisu/Kconfig" drivers/Kconfig; then
               echo 'source "drivers/sukisu/Kconfig"' >> drivers/Kconfig
           fi
