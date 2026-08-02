@@ -1,119 +1,74 @@
-name: Build SukiSU-Ultra KernelPatch for Galaxy A04
+name: Build SukiSU-Ultra for Galaxy A04
 
 on:
-  workflow_dispatch: # للبدء اليدوي من تبويب Actions
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Maximize Build Space
-        uses: easimon/maximize-build-space@master
-        with:
-          root-reserve-mb: 16384
-          temp-reserve-mb: 4096
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-
-      - name: Checkout Kernel Source (DaniTheSillyFem/kernel_samsung_a04)
+      - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
-          repository: DaniTheSillyFem/kernel_samsung_a04
-          ref: linux-4.19.y
+          repository: Halk56855/android_kernel_samsung_a04m
+          ref: latest-B
+          submodules: recursive
 
-      - name: Checkout Tools Repository (Halk56855/Tools-SukiSU-Ultra)
-        uses: actions/checkout@v4
-        with:
-          repository: Halk56855/Tools-SukiSU-Ultra
-          path: tools-dir
-
-      - name: Install Build Dependencies
+      - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zip zlib1g-dev lld llvm
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zlib1g-dev
 
-      - name: Download Toolchains (GCC for MediaTek Compatibility)
+      - name: Clone Toolchain (GCC/Clang)
         run: |
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain-gcc64
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain
 
-      - name: Configure and Compile Kernel with GCC
+      - name: Inject SukiSU-Ultra & Configure Drivers
+        run: |
+          # إنشاء مجلد sukisu ودمج الملفات
+          mkdir -p drivers/sukisu
+          git clone --depth=1 https://github.com/SukiSU-Ultra/SukiSU-Ultra.git drivers/sukisu/
+          
+          # ربط السورس بنظام بناء النواة
+          echo 'source "drivers/sukisu/Kconfig"' >> drivers/Kconfig
+          echo 'obj-y += sukisu/' >> drivers/Makefile
+
+      - name: Configure Kernel Flags (Defconfig)
+        run: |
+          # استبدل a04_defconfig باسم ملف التكوين الفعلي الموجود في arch/arm64/configs/ لجهازك
+          DEFCONFIG="a04_defconfig"
+          
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/$DEFCONFIG
+          echo "CONFIG_KPROBES=y" >> arch/arm64/configs/$DEFCONFIG
+          echo "CONFIG_HAVE_KPROBES=y" >> arch/arm64/configs/$DEFCONFIG
+          echo "CONFIG_KPROBE_EVENTS=y" >> arch/arm64/configs/$DEFCONFIG
+          echo "CONFIG_KALLSYMS=y" >> arch/arm64/configs/$DEFCONFIG
+          echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/$DEFCONFIG
+          echo "CONFIG_OVERLAY_FS=y" >> arch/arm64/configs/$DEFCONFIG
+
+      - name: Start Kernel Compilation
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="${{ github.workspace }}/toolchain-gcc64/bin:$PATH"
+          export PATH="${{ github.workspace }}/toolchain/bin:$PATH"
           
-          # تنظيف الملفات السابقة بالكامل
-          make O=out mrproper || true
-          
-          # اكتشاف وضبط ملف التهيئة المناسب تلقائياً
-          DEFCONFIG=""
-          if [ -d "arch/arm64/configs" ]; then
-            DEFCONFIG=$(ls arch/arm64/configs/ | grep -E "a04|mtk|6765" | head -n 1)
-          fi
-          
-          if [ -n "$DEFCONFIG" ]; then
-            make O=out "$DEFCONFIG"
-          else
-            make O=out mtk_defconfig || make O=out a04_defconfig || true
-          fi
-          
-          # مزامنة التهيئة تلقائياً
-          make O=out olddefconfig || true
-          
-          # تفعيل المتطلبات الإجبارية لـ SukiSU-Ultra ونواة 4.19
-          scripts/config --file out/.config --enable CONFIG_KPM
-          scripts/config --file out/.config --enable CONFIG_KALLSYMS
-          scripts/config --file out/.config --enable CONFIG_KALLSYMS_ALL
-          
-          # تعطيل نظم الملفات المتعارضة تفادياً لأخطاء التجميع
-          scripts/config --file out/.config --disable CONFIG_SDFAT_FS || true
-          scripts/config --file out/.config --disable CONFIG_SDFAT_SUPPORT || true
-          
-          # مزامنة نهائية لتثبيت الإعدادات
-          make O=out olddefconfig
-          
-          # بدء البناء البرمجي للنواة بتوافق تام مع معالجات MediaTek
-          make O=out -j$(nproc) ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-w"
+          DEFCONFIG="a04_defconfig"
+          make O=out $DEFCONFIG
+          make O=out -j$(nproc) CC=gcc
 
-      - name: Apply SukiSU KernelPatch (KPM) with Superkey
+      - name: Package with AnyKernel3
         run: |
-          chmod +x tools-dir/kptools-linux
+          git clone https://github.com/osm0sis/AnyKernel3.git anykernel
+          rm -rf anykernel/.git* anykernel/README.md
           
-          # تجهيز النواة الخام والتأكد من فك ضغطها إن وجدت بصيغة .gz
-          TARGET_IMAGE="out/arch/arm64/boot/Image"
-          
-          if [ ! -f "$TARGET_IMAGE" ] && [ -f "out/arch/arm64/boot/Image.gz" ]; then
-            gunzip -c out/arch/arm64/boot/Image.gz > "$TARGET_IMAGE"
-          elif [ ! -f "$TARGET_IMAGE" ] && [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
-            gunzip -c out/arch/arm64/boot/Image.gz-dtb > "$TARGET_IMAGE" || cp out/arch/arm64/boot/Image.gz-dtb "$TARGET_IMAGE"
-          fi
-          
-          if [ ! -f "$TARGET_IMAGE" ]; then
-            echo "Error: Uncompressed Kernel Image not found!"
-            exit 1
-          fi
-          
-          # حقن النواة الخام مع المفتاح السري Kahg13579
-          ./tools-dir/kptools-linux -p -i "$TARGET_IMAGE" -k tools-dir/kpimg -s Kahg13579 -o patched_image
-
-      - name: Pack with Custom AnyKernel3 for A04
-        run: |
-          git clone https://github.com/DaniTheSillyFem/AnyKernel3-a04.git -b master anykernel
-          rm -rf anykernel/.git
-          
-          if [ -f "patched_image" ]; then
-            cp patched_image anykernel/Image
-          else
-            cp out/arch/arm64/boot/Image anykernel/Image
-          fi
+          # نسخ النواة الناتجة (تأكد من مسار ملف Image حسب مخرجات جهازك)
+          cp out/arch/arm64/boot/Image anykernel/
           
           cd anykernel
-          zip -r ../SukiSU-Ultra-KernelPatch-A04.zip *
+          zip -r ../SukiSU-Ultra-A04-Kernel.zip *
 
-      - name: Upload Built Artifact
+      - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SukiSU-Ultra-KernelPatch-A04
-          path: SukiSU-Ultra-KernelPatch-A04.zip
+          name: SukiSU-Ultra-A04-Kernel
+          path: SukiSU-Ultra-A04-Kernel.zip
