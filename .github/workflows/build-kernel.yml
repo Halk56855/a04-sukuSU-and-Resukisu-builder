@@ -25,9 +25,9 @@ jobs:
           # استنساخ مفسر GCC
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain/aarch64-linux-android-4.9
           
-          # استنساخ مفسر Clang من مستودع عام ومستقر
+          # استنساخ مفسر Clang من مستودع عام ومستقر ومطابق للإصدار المطلوب
           mkdir -p toolchain/clang/host/linux-x86
-          git clone --depth=1 https://github.com/PixelExperience/android_prebuilts_clang_host_linux-x86_clang-r383902.git toolchain/clang/host/linux-x86/clang-r383902
+          git clone --depth=1 https://github.com/techyminati/android_prebuilts_clang_host_linux-x86_clang-6443078.git toolchain/clang/host/linux-x86/clang-r383902
 
       - name: Apply MediaTek 4.19 WiFi Fix & Purge Duplicate MTK_CMDQ Definitions
         run: |
@@ -105,11 +105,11 @@ jobs:
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="${{ github.workspace }}/toolchain/aarch64-linux-android-4.9/bin:$PATH"
+          export PATH="${{ github.workspace }}/toolchain/clang/host/linux-x86/clang-r383902/bin:${{ github.workspace }}/toolchain/aarch64-linux-android-4.9/bin:$PATH"
           
           DEFCONFIG="a04_defconfig"
           make O=out $DEFCONFIG
-          make O=out -j$(nproc)
+          make O=out -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android-
 
       - name: Package with AnyKernel3
         run: |
