@@ -30,7 +30,7 @@ jobs:
           git clone https://github.com/rsuntkOrgs/mtk_connectivity_module --depth=1 -b staging-4.19 drivers/misc/mediatek/connectivity
           rm -rf drivers/misc/mediatek/connectivity/.git
           
-          # سكريبت بايثون لحذف أي تعريف مكرر لـ MTK_CMDQ خارج ملف النواة الأساسي لمنع تعارض التعريفات نهائياً
+          # سكريبت بايثون لحذف أي تعريف مكرر لـ MTK_CMDQ خارج ملف النواة الأساسي
           python3 -c '
           import glob
           for filepath in glob.glob("**/Kconfig*", recursive=True):
@@ -41,10 +41,8 @@ jobs:
               
               if "config MTK_CMDQ" in content:
                   if "drivers/soc/mediatek/Kconfig" in filepath:
-                      print(f"Keeping primary definition in {filepath}")
                       continue
                   else:
-                      print(f"Stripping duplicate MTK_CMDQ definition from {filepath}")
                       lines = content.splitlines(keepends=True)
                       new_lines = []
                       i = 0
@@ -62,6 +60,30 @@ jobs:
                               i += 1
                       with open(filepath, "w", encoding="utf-8") as f:
                           f.writelines(new_lines)
+          '
+
+      - name: Sanitize All Kconfig Files (Remove Invalid Characters & Stray +)
+        run: |
+          # سكريبت لتنظيف جميع ملفات Kconfig وإزالة الرموز الزائدة والأخطاء التي توقف البناء
+          python3 -c '
+          import glob
+          for filepath in glob.glob("**/Kconfig*", recursive=True):
+              if "out" in filepath:
+                  continue
+              try:
+                  with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                      lines = f.readlines()
+                  new_lines = []
+                  for line in lines:
+                      stripped = line.strip()
+                      # إزالة الأسطر التي تحتوي فقط على رموز خاطئة مثل "+" أو أحرف تالفة مفردة
+                      if stripped == "+" or (len(stripped) == 1 and not stripped.isalnum() and stripped not in ["=", ":", "-", "_"]):
+                          continue
+                      new_lines.append(line)
+                  with open(filepath, "w", encoding="utf-8") as f:
+                      f.writelines(new_lines)
+              except Exception as e:
+                  print(f"Error sanitizing {filepath}: {e}")
           '
 
       - name: Inject SukiSU-Ultra
