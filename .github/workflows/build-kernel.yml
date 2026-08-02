@@ -62,6 +62,9 @@ jobs:
                       f.writelines(new_lines)
           '
 
+          # حل مشكلة المتغير غير المستخدم pTimeSlot الذي يوقف البناء بسبب -Werror
+          sed -i 's/PUINT32 pTimeSlot = (PUINT32) &gPwrSeqTime;/\/\/ PUINT32 pTimeSlot = (PUINT32) \&gPwrSeqTime;/g' drivers/misc/mediatek/connectivity/common/common_main/platform/mtk_wcn_cmb_hw.c
+
       - name: Inject SukiSU-Ultra
         run: |
           git clone --depth=1 https://github.com/SukiSU-Ultra/SukiSU-Ultra.git /tmp/sukisu_repo
