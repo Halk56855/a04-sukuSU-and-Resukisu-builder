@@ -23,16 +23,16 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain
 
-      - name: Apply MediaTek 4.19 WiFi Fix & Clean Conflicts
+      - name: Apply MediaTek 4.19 WiFi Fix & Resolve Kconfig Conflicts
         run: |
           # استبدال مجلد الاتصال بحزمة نواة 4.19
           rm -rf drivers/misc/mediatek/connectivity
           git clone https://github.com/rsuntkOrgs/mtk_connectivity_module --depth=1 -b staging-4.19 drivers/misc/mediatek/connectivity
           rm -rf drivers/misc/mediatek/connectivity/.git
           
-          # حذف التعريف المكرر لـ MTK_CMDQ من ملفات Kconfig الخاصة بوحدة الواي فاي المضافة لمنع خطأ التعرّف
-          find drivers/misc/mediatek/connectivity -name "Kconfig*" -type f -exec sed -i '/config MTK_CMDQ/,/^$/d' {} + || true
-          find drivers/misc/mediatek/connectivity -name "Kconfig*" -type f -exec sed -i '/MTK_CMDQ/d' {} + || true
+          # حل مشكلة تعارض MTK_CMDQ عبر تحويله إلى tristate في النواة الأصلية ليطابق وحدة الواي فاي
+          sed -i '/config MTK_CMDQ/,/default/ s/bool/tristate/g' drivers/soc/mediatek/Kconfig || true
+          sed -i 's/\bbool\b/tristate/g' drivers/soc/mediatek/Kconfig || true
 
       - name: Inject SukiSU-Ultra
         run: |
