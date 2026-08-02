@@ -23,34 +23,45 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain
 
-      - name: Apply MediaTek 4.19 WiFi Fix & Completely Strip MTK_CMDQ Definition
+      - name: Apply MediaTek 4.19 WiFi Fix & Purge Duplicate MTK_CMDQ Definitions
         run: |
           # استبدال مجلد الاتصال بحزمة نواة 4.19
           rm -rf drivers/misc/mediatek/connectivity
           git clone https://github.com/rsuntkOrgs/mtk_connectivity_module --depth=1 -b staging-4.19 drivers/misc/mediatek/connectivity
           rm -rf drivers/misc/mediatek/connectivity/.git
           
-          # سكريبت بايثون لحذف بلوك تعريف config MTK_CMDQ من ملفات Kconfig المضافة لمنع التماثل والتعارض نهائياً
+          # سكريبت بايثون لحذف أي تعريف مكرر لـ MTK_CMDQ خارج ملف النواة الأساسي لمنع تعارض التعريفات نهائياً
           python3 -c '
           import glob
-          for filepath in glob.glob("drivers/misc/mediatek/connectivity/**/Kconfig*", recursive=True):
+          for filepath in glob.glob("**/Kconfig*", recursive=True):
+              if "out" in filepath:
+                  continue
               with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                  lines = f.readlines()
-              new_lines = []
-              in_mtk_cmdq = False
-              for line in lines:
-                  stripped = line.strip()
-                  if stripped.startswith("config MTK_CMDQ"):
-                      in_mtk_cmdq = True
+                  content = f.read()
+              
+              if "config MTK_CMDQ" in content:
+                  if "drivers/soc/mediatek/Kconfig" in filepath:
+                      print(f"Keeping primary definition in {filepath}")
                       continue
-                  if in_mtk_cmdq:
-                      if stripped.startswith("config ") or stripped.startswith("menuconfig ") or stripped.startswith("choice ") or stripped.startswith("endchoice ") or stripped.startswith("menu ") or stripped.startswith("endmenu ") or (line and not line.startswith("\t") and not line.startswith(" ")):
-                          in_mtk_cmdq = False
-                      else:
-                          continue
-                  new_lines.append(line)
-              with open(filepath, "w", encoding="utf-8") as f:
-                  f.writelines(new_lines)
+                  else:
+                      print(f"Stripping duplicate MTK_CMDQ definition from {filepath}")
+                      lines = content.splitlines(keepends=True)
+                      new_lines = []
+                      i = 0
+                      while i < len(lines):
+                          if "config MTK_CMDQ" in lines[i]:
+                              i += 1
+                              while i < len(lines):
+                                  l = lines[i]
+                                  s = l.strip()
+                                  if s.startswith("config ") or s.startswith("menuconfig ") or s.startswith("choice ") or s.startswith("endchoice ") or s.startswith("menu ") or s.startswith("endmenu ") or s.startswith("if ") or s.startswith("endif ") or (l and not l.startswith("\t") and not l.startswith(" ")):
+                                      break
+                                  i += 1
+                          else:
+                              new_lines.append(lines[i])
+                              i += 1
+                      with open(filepath, "w", encoding="utf-8") as f:
+                          f.writelines(new_lines)
           '
 
       - name: Inject SukiSU-Ultra
