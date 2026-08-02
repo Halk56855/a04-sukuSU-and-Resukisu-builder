@@ -71,10 +71,8 @@ jobs:
           mkdir -p drivers/sukisu
           cp -rf /tmp/sukisu_repo/kernel/* drivers/sukisu/
           
-          # نسخ جميع ملفات الهيدر ومجلدات uapi بالكامل لضمان اكتمال تعريفات KPM
-          mkdir -p drivers/sukisu/kpm/uapi
-          find /tmp/sukisu_repo -type d -name "uapi" -exec cp -rf {} drivers/sukisu/kpm/ \;
-          find /tmp/sukisu_repo -name "*.h" -exec cp -f {} drivers/sukisu/kpm/uapi/ \; 2>/dev/null || true
+          # تصحيح مسارات التضمين داخل ملفات KPM لمنع مشاكل المجلدات المفقودة
+          find drivers/sukisu -type f \( -name "*.h" -o -name "*.c" \) -exec sed -i 's/#include "uapi\//\#include "/g' {} +
           
           if ! grep -q "drivers/sukisu/Kconfig" drivers/Kconfig; then
               echo 'source "drivers/sukisu/Kconfig"' >> drivers/Kconfig
