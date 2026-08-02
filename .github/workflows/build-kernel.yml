@@ -112,7 +112,10 @@ jobs:
           
           DEFCONFIG="a04_defconfig"
           make O=out $DEFCONFIG
-          make O=out -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-w" HOSTCFLAGS="-w"
+          
+          # محاولة البناء المتوازي، وإذا فشل يتم إعادة البناء بنواة واحدة (-j1) لطباعة الخطأ الحقيقي بوضوح
+          make O=out -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-w" HOSTCFLAGS="-w" || \
+          make O=out -j1 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- KCFLAGS="-w" HOSTCFLAGS="-w"
 
       - name: Package with AnyKernel3
         run: |
