@@ -1,4 +1,4 @@
-name: Build SukiSU-Ultra Kernel for Galaxy A04
+name: Build SukiSU-Ultra Kernel for Galaxy A04 (MT 4.19)
 
 on:
   workflow_dispatch:
@@ -23,6 +23,13 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain
 
+      - name: Apply MediaTek 4.19 WiFi Fix
+        run: |
+          # استبدال مجلد الاتصال القديم بحزم التوافق الخاصة بنواة 4.19 ميديا تك
+          rm -rf drivers/misc/mediatek/connectivity
+          git clone https://github.com/rsuntkOrgs/mtk_connectivity_module --depth=1 -b staging-4.19 drivers/misc/mediatek/connectivity
+          rm -rf drivers/misc/mediatek/connectivity/.git
+
       - name: Inject SukiSU-Ultra
         run: |
           git clone --depth=1 https://github.com/SukiSU-Ultra/SukiSU-Ultra.git /tmp/sukisu_repo
@@ -37,13 +44,12 @@ jobs:
               echo 'obj-y += sukisu/' >> drivers/Makefile
           fi
 
-      - name: Configure Kernel Flags
+      - name: Configure Kernel Flags & Security Bypasses
         run: |
-          # تأكد من مطابقة اسم ملف التكوين (Defconfig) الموجود في arch/arm64/configs/ لجهازك
           DEFCONFIG="a04_defconfig"
           CONFIG_PATH="arch/arm64/configs/$DEFCONFIG"
           
-          # خيارات SukiSU-Ultra ووحدات KPM و Kprobes
+          # خيارات SukiSU-Ultra والخطافات
           echo "CONFIG_KSU=y" >> $CONFIG_PATH
           echo "CONFIG_KPM=y" >> $CONFIG_PATH
           echo "CONFIG_KPROBES=y" >> $CONFIG_PATH
@@ -52,11 +58,16 @@ jobs:
           echo "CONFIG_KALLSYMS=y" >> $CONFIG_PATH
           echo "CONFIG_KALLSYMS_ALL=y" >> $CONFIG_PATH
           
-          # خيارات التوافق مع الرومات الرسمية والمعدلة
+          # خيارات التوافق للرومات المعدلة ونظام الملفات
           echo "CONFIG_OVERLAY_FS=y" >> $CONFIG_PATH
           echo "CONFIG_FS_ENCRYPTION=y" >> $CONFIG_PATH
           echo "CONFIG_TMPFS_XATTR=y" >> $CONFIG_PATH
           echo "CONFIG_SECURITY_SELINUX=y" >> $CONFIG_PATH
+          
+          # إيقاف حماية سامسونج المعرقلة للروت والنواة المعدلة (Defex, Proca, UH)
+          echo "CONFIG_SECURITY_DEFEX=n" >> $CONFIG_PATH
+          echo "CONFIG_PROCA=n" >> $CONFIG_PATH
+          echo "CONFIG_UH=n" >> $CONFIG_PATH
 
       - name: Compile Kernel
         run: |
@@ -73,7 +84,6 @@ jobs:
           git clone https://github.com/osm0sis/AnyKernel3.git anykernel
           rm -rf anykernel/.git* anykernel/README.md
           
-          # نسخ ملف النواة (تأكد ما إذا كان Image أو Image.gz-dtb حسب مخرجات جهازك)
           cp out/arch/arm64/boot/Image anykernel/
           
           cd anykernel
