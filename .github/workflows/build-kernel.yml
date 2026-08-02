@@ -25,9 +25,9 @@ jobs:
           # استنساخ مفسر GCC
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain/aarch64-linux-android-4.9
           
-          # استنساخ مفسر Clang بالمسار الدقيق الذي تطالبه النواة لتجنب خطأ not found
+          # استنساخ مفسر Clang من مستودع عام ومستقر
           mkdir -p toolchain/clang/host/linux-x86
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r383902.git toolchain/clang/host/linux-x86/clang-r383902
+          git clone --depth=1 https://github.com/PixelExperience/android_prebuilts_clang_host_linux-x86_clang-r383902.git toolchain/clang/host/linux-x86/clang-r383902
 
       - name: Apply MediaTek 4.19 WiFi Fix & Purge Duplicate MTK_CMDQ Definitions
         run: |
