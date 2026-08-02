@@ -25,17 +25,23 @@ jobs:
 
       - name: Inject SukiSU-Ultra & Configure Drivers
         run: |
-          # إنشاء مجلد sukisu ودمج الملفات
+          # سحب المستودع مؤقتاً ونقل محتويات مجلد kernel فقط إلى مسار النواة الصحيح
+          git clone --depth=1 https://github.com/SukiSU-Ultra/SukiSU-Ultra.git /tmp/sukisu_repo
           mkdir -p drivers/sukisu
-          git clone --depth=1 https://github.com/SukiSU-Ultra/SukiSU-Ultra.git drivers/sukisu/
+          cp -rf /tmp/sukisu_repo/kernel/* drivers/sukisu/
           
-          # ربط السورس بنظام بناء النواة
-          echo 'source "drivers/sukisu/Kconfig"' >> drivers/Kconfig
-          echo 'obj-y += sukisu/' >> drivers/Makefile
+          # ربط السورس بنظام بناء النواة بشكل آمن بدون تكرار
+          if ! grep -q "drivers/sukisu/Kconfig" drivers/Kconfig; then
+              echo 'source "drivers/sukisu/Kconfig"' >> drivers/Kconfig
+          fi
+          
+          if ! grep -q "sukisu/" drivers/Makefile; then
+              echo 'obj-y += sukisu/' >> drivers/Makefile
+          fi
 
       - name: Configure Kernel Flags (Defconfig)
         run: |
-          # استبدل a04_defconfig باسم ملف التكوين الفعلي الموجود في arch/arm64/configs/ لجهازك
+          # تأكد من اسم ملف الـ defconfig الفعلي داخل مجلد arch/arm64/configs/ لجهازك
           DEFCONFIG="a04_defconfig"
           
           echo "CONFIG_KSU=y" >> arch/arm64/configs/$DEFCONFIG
@@ -61,7 +67,6 @@ jobs:
           git clone https://github.com/osm0sis/AnyKernel3.git anykernel
           rm -rf anykernel/.git* anykernel/README.md
           
-          # نسخ النواة الناتجة (تأكد من مسار ملف Image حسب مخرجات جهازك)
           cp out/arch/arm64/boot/Image anykernel/
           
           cd anykernel
