@@ -23,38 +23,34 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain
 
-      - name: Apply MediaTek 4.19 WiFi Fix & Purge MTK_CMDQ Conflict
+      - name: Apply MediaTek 4.19 WiFi Fix & Completely Strip MTK_CMDQ Definition
         run: |
           # استبدال مجلد الاتصال بحزمة نواة 4.19
           rm -rf drivers/misc/mediatek/connectivity
           git clone https://github.com/rsuntkOrgs/mtk_connectivity_module --depth=1 -b staging-4.19 drivers/misc/mediatek/connectivity
           rm -rf drivers/misc/mediatek/connectivity/.git
           
-          # استخدام بايثون لحذف تعريف MTK_CMDQ المتعارض من وحدة الواي فاي المضافة نهائياً
+          # سكريبت بايثون لحذف بلوك تعريف config MTK_CMDQ من ملفات Kconfig المضافة لمنع التماثل والتعارض نهائياً
           python3 -c '
           import glob
           for filepath in glob.glob("drivers/misc/mediatek/connectivity/**/Kconfig*", recursive=True):
-              try:
-                  with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                      lines = f.readlines()
-                  new_lines = []
-                  skip = False
-                  for line in lines:
-                      if "config MTK_CMDQ" in line:
-                          skip = True
+              with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                  lines = f.readlines()
+              new_lines = []
+              in_mtk_cmdq = False
+              for line in lines:
+                  stripped = line.strip()
+                  if stripped.startswith("config MTK_CMDQ"):
+                      in_mtk_cmdq = True
+                      continue
+                  if in_mtk_cmdq:
+                      if stripped.startswith("config ") or stripped.startswith("menuconfig ") or stripped.startswith("choice ") or stripped.startswith("endchoice ") or stripped.startswith("menu ") or stripped.startswith("endmenu ") or (line and not line.startswith("\t") and not line.startswith(" ")):
+                          in_mtk_cmdq = False
+                      else:
                           continue
-                      if skip:
-                          if line.strip() == "" or line.startswith("config ") or line.startswith("menuconfig ") or line.startswith("choice "):
-                              skip = False
-                          else:
-                              continue
-                      if "MTK_CMDQ" in line:
-                          continue
-                      new_lines.append(line)
-                  with open(filepath, "w", encoding="utf-8") as f:
-                      f.writelines(new_lines)
-              except Exception as e:
-                  print(f"Error processing {filepath}: {e}")
+                  new_lines.append(line)
+              with open(filepath, "w", encoding="utf-8") as f:
+                  f.writelines(new_lines)
           '
 
       - name: Inject SukiSU-Ultra
