@@ -17,22 +17,45 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zlib1g-dev
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc yasm zlib1g-dev python3
 
       - name: Clone Toolchain
         run: |
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain
 
-      - name: Apply MediaTek 4.19 WiFi Fix & Resolve Kconfig Conflicts
+      - name: Apply MediaTek 4.19 WiFi Fix & Purge MTK_CMDQ Conflict
         run: |
           # استبدال مجلد الاتصال بحزمة نواة 4.19
           rm -rf drivers/misc/mediatek/connectivity
           git clone https://github.com/rsuntkOrgs/mtk_connectivity_module --depth=1 -b staging-4.19 drivers/misc/mediatek/connectivity
           rm -rf drivers/misc/mediatek/connectivity/.git
           
-          # حل مشكلة تعارض MTK_CMDQ عبر تحويله إلى tristate في النواة الأصلية ليطابق وحدة الواي فاي
-          sed -i '/config MTK_CMDQ/,/default/ s/bool/tristate/g' drivers/soc/mediatek/Kconfig || true
-          sed -i 's/\bbool\b/tristate/g' drivers/soc/mediatek/Kconfig || true
+          # استخدام بايثون لحذف تعريف MTK_CMDQ المتعارض من وحدة الواي فاي المضافة نهائياً
+          python3 -c '
+          import glob
+          for filepath in glob.glob("drivers/misc/mediatek/connectivity/**/Kconfig*", recursive=True):
+              try:
+                  with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                      lines = f.readlines()
+                  new_lines = []
+                  skip = False
+                  for line in lines:
+                      if "config MTK_CMDQ" in line:
+                          skip = True
+                          continue
+                      if skip:
+                          if line.strip() == "" or line.startswith("config ") or line.startswith("menuconfig ") or line.startswith("choice "):
+                              skip = False
+                          else:
+                              continue
+                      if "MTK_CMDQ" in line:
+                          continue
+                      new_lines.append(line)
+                  with open(filepath, "w", encoding="utf-8") as f:
+                      f.writelines(new_lines)
+              except Exception as e:
+                  print(f"Error processing {filepath}: {e}")
+          '
 
       - name: Inject SukiSU-Ultra
         run: |
