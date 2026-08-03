@@ -65,7 +65,7 @@ jobs:
           mkdir -p drivers/sukisu
           cp -rf /tmp/sukisu_repo/kernel/* drivers/sukisu/
           
-          # سكريبت بايثون محدث يتجنب نسخ الملف على نفسه ويقوم بتنظيم ملفات الهيدر وتصحيح التضمينات
+          # سكريبت بايثون آمن ومحصّن ضد أخطاء تكرار المجلدات وتعارض المسارات
           python3 -c '
           import os, glob, shutil
 
@@ -75,24 +75,38 @@ jobs:
           
           for d in subdirs:
               uapi_sub = os.path.join(d, "uapi")
-              os.makedirs(uapi_sub, exist_ok=True)
+              try:
+                  os.makedirs(uapi_sub, exist_ok=True)
+              except Exception:
+                  pass
+
               for h in header_files:
                   dest_d = os.path.join(d, os.path.basename(h))
                   dest_uapi = os.path.join(uapi_sub, os.path.basename(h))
                   
-                  if os.path.abspath(h) != os.path.abspath(dest_d):
-                      shutil.copy(h, dest_d)
-                  if os.path.abspath(h) != os.path.abspath(dest_uapi):
-                      shutil.copy(h, dest_uapi)
+                  try:
+                      if os.path.abspath(h) != os.path.abspath(dest_d) and not os.path.isdir(dest_d):
+                          shutil.copy(h, dest_d)
+                  except Exception:
+                      pass
+                      
+                  try:
+                      if os.path.abspath(h) != os.path.abspath(dest_uapi) and not os.path.isdir(dest_uapi):
+                          shutil.copy(h, dest_uapi)
+                  except Exception:
+                      pass
 
           for filepath in glob.glob(os.path.join(sukisu_dir, "**/*"), recursive=True):
-              if filepath.endswith((".h", ".c")):
-                  with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                      content = f.read()
-                  new_content = content.replace("#include \"uapi/", "#include \"")
-                  if new_content != content:
-                      with open(filepath, "w", encoding="utf-8") as f:
-                          f.write(new_content)
+              if os.path.isfile(filepath) and filepath.endswith((".h", ".c")):
+                  try:
+                      with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                          content = f.read()
+                      new_content = content.replace("#include \"uapi/", "#include \"")
+                      if new_content != content:
+                          with open(filepath, "w", encoding="utf-8") as f:
+                              f.write(new_content)
+                  except Exception:
+                      pass
           '
           
           if ! grep -q "drivers/sukisu/Kconfig" drivers/Kconfig; then
