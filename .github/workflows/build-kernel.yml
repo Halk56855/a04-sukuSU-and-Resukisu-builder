@@ -71,17 +71,10 @@ jobs:
           mkdir -p drivers/sukisu
           cp -rf /tmp/sukisu_repo/kernel/* drivers/sukisu/
           
-          # سكريبت بايثون لتصحيح مسارات التضمين داخل مجلدات uapi لمنع أخطاء التداخل
-          python3 -c '
-          import glob
-          for filepath in glob.glob("drivers/sukisu/kpm/**/*.h", recursive=True):
-              if "uapi" in filepath:
-                  with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                      content = f.read()
-                  content = content.replace("#include \"uapi/", "#include \"")
-                  with open(filepath, "w", encoding="utf-8") as f:
-                      f.write(content)
-          '
+          # إنشاء مجلد uapi ونسخ ملفات الهيدر بداخله وفي المجلد الرئيسي لضمان توافق المسارات تماماً
+          mkdir -p drivers/sukisu/kpm/uapi
+          find /tmp/sukisu_repo -name "*.h" -exec cp -f {} drivers/sukisu/kpm/uapi/ \;
+          find /tmp/sukisu_repo -name "*.h" -exec cp -f {} drivers/sukisu/kpm/ \;
           
           if ! grep -q "drivers/sukisu/Kconfig" drivers/Kconfig; then
               echo 'source "drivers/sukisu/Kconfig"' >> drivers/Kconfig
