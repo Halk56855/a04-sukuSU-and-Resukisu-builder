@@ -71,10 +71,22 @@ jobs:
           mkdir -p drivers/sukisu
           cp -rf /tmp/sukisu_repo/kernel/* drivers/sukisu/
           
-          # إنشاء مجلد uapi ونسخ ملفات الهيدر بداخله وفي المجلد الرئيسي لضمان توافق المسارات تماماً
+          # نسخ وتوفير ملفات الهيدر في المسارين معاً وتصحيح مسارات التضمين تلقائياً
           mkdir -p drivers/sukisu/kpm/uapi
-          find /tmp/sukisu_repo -name "*.h" -exec cp -f {} drivers/sukisu/kpm/uapi/ \;
           find /tmp/sukisu_repo -name "*.h" -exec cp -f {} drivers/sukisu/kpm/ \;
+          find /tmp/sukisu_repo -name "*.h" -exec cp -f {} drivers/sukisu/kpm/uapi/ \;
+          
+          python3 -c '
+          import glob
+          for filepath in glob.glob("drivers/sukisu/kpm/**/*", recursive=True):
+              if filepath.endswith((".h", ".c")):
+                  with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                      content = f.read()
+                  new_content = content.replace("#include \"uapi/", "#include \"")
+                  if new_content != content:
+                      with open(filepath, "w", encoding="utf-8") as f:
+                          f.write(new_content)
+          '
           
           if ! grep -q "drivers/sukisu/Kconfig" drivers/Kconfig; then
               echo 'source "drivers/sukisu/Kconfig"' >> drivers/Kconfig
