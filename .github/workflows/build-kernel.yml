@@ -65,7 +65,7 @@ jobs:
           mkdir -p drivers/sukisu
           cp -rf /tmp/sukisu_repo/kernel/* drivers/sukisu/
           
-          # سكريبت بايثون متطور لمعالجة المسارات، وتصحيح access_ok بعد التضمينات، وتعريف الهياكل الناقصة
+          # سكريبت بايثون لمعالجة الثوابت، الهياكل، وجميع أخطاء كود kpm.c
           python3 -c '
           import os, glob, shutil
 
@@ -108,24 +108,17 @@ jobs:
                   except Exception:
                       pass
 
-          cmd_header = None
-          for h in header_files:
-              with open(h, "r", encoding="utf-8", errors="ignore") as f:
-                  text = f.read()
-                  if "struct ksu_kpm_cmd" in text or "SUKISU_KPM_VERSION" in text:
-                      cmd_header = os.path.basename(h)
-                      break
-
           kpm_path = os.path.join(sukisu_dir, "kpm", "kpm.c")
           if os.path.exists(kpm_path):
               with open(kpm_path, "r", encoding="utf-8", errors="ignore") as f:
                   kpm_content = f.read()
 
-              includes_to_add = ""
-              if cmd_header and cmd_header not in kpm_content:
-                  includes_to_add += f"#include \"{cmd_header}\"\n"
+              kpm_content = kpm_content.replace("struct ksu_kpm_cmd;", "")
 
-              includes_to_add += """
+              definitions = """
+              #ifndef SUKISU_KPM_LOAD
+              #define SUKISU_KPM_LOAD 0
+              #endif
               #ifndef SUKISU_KPM_UNLOAD
               #define SUKISU_KPM_UNLOAD 1
               #endif
@@ -144,9 +137,19 @@ jobs:
               #ifndef SUKISU_KPM_VERSION
               #define SUKISU_KPM_VERSION 6
               #endif
+
+              #ifndef __KSU_KPM_CMD_DEFINED__
+              #define __KSU_KPM_CMD_DEFINED__
+              struct ksu_kpm_cmd {
+                  unsigned int cmd;
+                  unsigned long arg1;
+                  unsigned long arg2;
+                  unsigned long arg3;
+              };
+              #endif
               """
 
-              kpm_content = includes_to_add + "\n" + kpm_content
+              kpm_content = definitions + "\n" + kpm_content
 
               lines = kpm_content.splitlines()
               last_include_idx = -1
@@ -164,19 +167,6 @@ jobs:
                   lines.insert(0, access_ok_fix)
 
               kpm_content = "\n".join(lines)
-
-              if "struct ksu_kpm_cmd {" not in kpm_content:
-                  fully_defined = any("struct ksu_kpm_cmd {" in open(h).read() for h in header_files)
-                  if not fully_defined:
-                      cmd_def = """
-                      struct ksu_kpm_cmd {
-                          unsigned int cmd;
-                          unsigned long arg1;
-                          unsigned long arg2;
-                          unsigned long arg3;
-                      };
-                      """
-                      kpm_content = kpm_content.replace("struct ksu_kpm_cmd;", cmd_def)
 
               with open(kpm_path, "w", encoding="utf-8") as f:
                   f.write(kpm_content)
