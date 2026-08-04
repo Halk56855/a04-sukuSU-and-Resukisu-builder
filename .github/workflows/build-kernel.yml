@@ -65,7 +65,7 @@ jobs:
           mkdir -p drivers/sukisu
           cp -rf /tmp/sukisu_repo/kernel/* drivers/sukisu/
           
-          # سكريبت بايثون لمعالجة الهيدر والمسارات ورقع مشاكل kpm.c و access_ok تلقائياً
+          # سكريبت بايثون متطور لمعالجة المسارات، وتصحيح access_ok بعد التضمينات، وتعريف الهياكل الناقصة
           python3 -c '
           import os, glob, shutil
 
@@ -96,13 +96,6 @@ jobs:
                   except Exception:
                       pass
 
-          target_header = None
-          for h in header_files:
-              with open(h, "r", encoding="utf-8", errors="ignore") as f:
-                  if "SUKISU_KPM_UNLOAD" in f.read():
-                      target_header = os.path.basename(h)
-                      break
-
           for filepath in glob.glob(os.path.join(sukisu_dir, "**/*"), recursive=True):
               if os.path.isfile(filepath) and filepath.endswith((".h", ".c")):
                   try:
@@ -115,41 +108,76 @@ jobs:
                   except Exception:
                       pass
 
+          cmd_header = None
+          for h in header_files:
+              with open(h, "r", encoding="utf-8", errors="ignore") as f:
+                  text = f.read()
+                  if "struct ksu_kpm_cmd" in text or "SUKISU_KPM_VERSION" in text:
+                      cmd_header = os.path.basename(h)
+                      break
+
           kpm_path = os.path.join(sukisu_dir, "kpm", "kpm.c")
           if os.path.exists(kpm_path):
               with open(kpm_path, "r", encoding="utf-8", errors="ignore") as f:
                   kpm_content = f.read()
-              
-              patch_code = ""
-              if target_header and target_header not in kpm_content:
-                  patch_code += f"#include \"{target_header}\"\n"
-              else:
-                  patch_code += """
-          #ifndef SUKISU_KPM_UNLOAD
-          #define SUKISU_KPM_UNLOAD 1
-          #endif
-          #ifndef SUKISU_KPM_NUM
-          #define SUKISU_KPM_NUM 2
-          #endif
-          #ifndef SUKISU_KPM_INFO
-          #define SUKISU_KPM_INFO 3
-          #endif
-          #ifndef SUKISU_KPM_LIST
-          #define SUKISU_KPM_LIST 4
-          #endif
-          #ifndef SUKISU_KPM_CONTROL
-          #define SUKISU_KPM_CONTROL 5
-          #endif
-          """
 
-              patch_code += """
-          #ifdef access_ok
-          #undef access_ok
-          #define access_ok(addr, size) access_ok(0, addr, size)
-          #endif
-          """
-              
-              kpm_content = patch_code + "\n" + kpm_content
+              includes_to_add = ""
+              if cmd_header and cmd_header not in kpm_content:
+                  includes_to_add += f"#include \"{cmd_header}\"\n"
+
+              includes_to_add += """
+              #ifndef SUKISU_KPM_UNLOAD
+              #define SUKISU_KPM_UNLOAD 1
+              #endif
+              #ifndef SUKISU_KPM_NUM
+              #define SUKISU_KPM_NUM 2
+              #endif
+              #ifndef SUKISU_KPM_INFO
+              #define SUKISU_KPM_INFO 3
+              #endif
+              #ifndef SUKISU_KPM_LIST
+              #define SUKISU_KPM_LIST 4
+              #endif
+              #ifndef SUKISU_KPM_CONTROL
+              #define SUKISU_KPM_CONTROL 5
+              #endif
+              #ifndef SUKISU_KPM_VERSION
+              #define SUKISU_KPM_VERSION 6
+              #endif
+              """
+
+              kpm_content = includes_to_add + "\n" + kpm_content
+
+              lines = kpm_content.splitlines()
+              last_include_idx = -1
+              for idx, line in enumerate(lines):
+                  if line.strip().startswith("#include"):
+                      last_include_idx = idx
+
+              access_ok_fix = """
+              #undef access_ok
+              #define access_ok(addr, size) access_ok(0, addr, size)
+              """
+              if last_include_idx != -1:
+                  lines.insert(last_include_idx + 1, access_ok_fix)
+              else:
+                  lines.insert(0, access_ok_fix)
+
+              kpm_content = "\n".join(lines)
+
+              if "struct ksu_kpm_cmd {" not in kpm_content:
+                  fully_defined = any("struct ksu_kpm_cmd {" in open(h).read() for h in header_files)
+                  if not fully_defined:
+                      cmd_def = """
+                      struct ksu_kpm_cmd {
+                          unsigned int cmd;
+                          unsigned long arg1;
+                          unsigned long arg2;
+                          unsigned long arg3;
+                      };
+                      """
+                      kpm_content = kpm_content.replace("struct ksu_kpm_cmd;", cmd_def)
+
               with open(kpm_path, "w", encoding="utf-8") as f:
                   f.write(kpm_content)
           '
