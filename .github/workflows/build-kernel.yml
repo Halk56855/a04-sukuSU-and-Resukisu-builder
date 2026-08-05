@@ -1,4 +1,4 @@
-name: Build SukiSU Kernel for Samsung A04
+name: Build ReSukiSU Kernel for Samsung A04
 
 on:
   workflow_dispatch:
@@ -7,9 +7,6 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
       - name: Setup Build Environment & Toolchain
         run: |
           sudo apt-get update
@@ -24,26 +21,48 @@ jobs:
             wget \
             python3 \
             zip \
+            tar \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu
 
-      - name: Check Kernel Structure
+      - name: Download and Extract Kernel.tar.gz from v1.0 Release
         run: |
-          if [ ! -d "drivers" ]; then
-            echo "Error: Kernel source files are missing in this repository branch!"
-            echo "Please upload the full Samsung A04 kernel source tree first."
-            exit 1
+          echo "Downloading Kernel.tar.gz from v1.0 release..."
+          wget -O Kernel.tar.gz "https://github.com/Halk56855/android_kernel_samsung_a04f/releases/download/v1.0/Kernel.tar.gz"
+          
+          echo "Extracting Kernel source files..."
+          mkdir -p extracted_kernel
+          tar -xzf Kernel.tar.gz -C extracted_kernel
+          
+          # نقل الملفات إلى المجلد الرئيسي لجذر المستودع (Workspace)
+          shopt -s dotglob
+          if [ "$(ls -A extracted_kernel | wc -l)" -eq 1 ] && [ -d "extracted_kernel/$(ls -A extracted_kernel)" ]; then
+            INNER_DIR=$(ls -A extracted_kernel)
+            mv extracted_kernel/$INNER_DIR/* ./
+            rm -rf extracted_kernel
+          else
+            mv extracted_kernel/* ./
+            rm -rf extracted_kernel
           fi
+          rm Kernel.tar.gz
+          echo "Kernel source extracted successfully!"
 
-      - name: Integrate SukiSU (Builtin Branch)
+      - name: Integrate ReSukiSU
         run: |
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
+          # تشغيل سكربت دمج ReSukiSU
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash || true
 
+          # إضافة إعدادات النواة المطلوبة والخطافات اليدوية
           DEFCONFIG_PATH="arch/arm64/configs/a04_defconfig"
           if [ -f "$DEFCONFIG_PATH" ]; then
             echo "CONFIG_KALLSYMS=y" >> "$DEFCONFIG_PATH"
             echo "CONFIG_KALLSYMS_ALL=y" >> "$DEFCONFIG_PATH"
             echo "CONFIG_KPM=y" >> "$DEFCONFIG_PATH"
+            echo "CONFIG_KSU=y" >> "$DEFCONFIG_PATH"
+            echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG_PATH"
+            echo "Defconfig updated successfully."
+          else
+            echo "Warning: a04_defconfig path might differ. Please check your arch/arm64/configs/ directory."
           fi
 
       - name: Build Kernel
@@ -58,12 +77,21 @@ jobs:
         run: |
           git clone https://github.com/KernelSU/AnyKernel3 -b master anykernel
           rm -rf anykernel/.git
-          cp out/arch/arm64/boot/Image.gz anykernel/
+          
+          if [ -f "out/arch/arm64/boot/Image.gz" ]; then
+            cp out/arch/arm64/boot/Image.gz anykernel/
+          elif [ -f "out/arch/arm64/boot/Image" ]; then
+            cp out/arch/arm64/boot/Image anykernel/
+          else
+            echo "Error: Kernel Image not found!"
+            exit 1
+          fi
+          
           cd anykernel
-          zip -r9 ../SukiSU-Samsung-A04.zip *
+          zip -r9 ../ReSukiSU-Samsung-A04.zip *
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SukiSU-Samsung-A04-Kernel
-          path: SukiSU-Samsung-A04.zip
+          name: ReSukiSU-Samsung-A04-Kernel
+          path: ReSukiSU-Samsung-A04.zip
