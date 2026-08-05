@@ -40,37 +40,44 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s v3.0.0-30-legacy
 
-      - name: Fix Drivers and Kconfig Recursive Dependencies
+      - name: Precision Non-Destructive Kconfig Conflict Resolver
         run: |
-          echo "Cleaning up Kconfig files and fixing line endings..."
+          echo "Cleaning line endings..."
           find . -name "Kconfig*" -type f -exec dos2unix {} + || true
           find . -name "Kconfig" -type f -exec dos2unix {} + || true
 
-          # حل تعارض نوع MTK_CMDQ
+          # حل تعارض نوع MTK_CMDQ بأمان
           if [ -f "drivers/soc/mediatek/Kconfig" ]; then
             sed -i '/config MTK_CMDQ/,/^$/ s/tristate/bool/g' drivers/soc/mediatek/Kconfig || true
             sed -i 's/tristate "MediaTek Command Queue"/bool "MediaTek Command Queue"/' drivers/soc/mediatek/Kconfig || true
           fi
 
-          # إصلاح أخطاء تعريفات شاشات اللمس
-          for dir in hxchipset_hx83108x hxchipset_hx83112f hxchipset_hx83102p; do
-            KCONFIG_PATH="drivers/input/touchscreen/mediatek/$dir/Kconfig"
-            if [ -f "$KCONFIG_PATH" ]; then
-              sed -i 's/default TOUCHSCREEN_HIMAX_INCELL/# default TOUCHSCREEN_HIMAX_INCELL/g' "$KCONFIG_PATH" || true
-              sed -i '/choice/d' "$KCONFIG_PATH" || true
-              sed -i '/endchoice/d' "$KCONFIG_PATH" || true
-            fi
-          done
-
-          # معالجة وإلغاء الاعتماد الدائري (Recursive Dependency) في ملف Himax الفرعي
-          HIMAX_RECURSIVE_KCONFIG="drivers/input/touchscreen/mediatek/hxchipset_8789p1_8185p3/Kconfig"
-          if [ -f "$HIMAX_RECURSIVE_KCONFIG" ]; then
-            echo "Fixing recursive dependency in $HIMAX_RECURSIVE_KCONFIG..."
-            > "$HIMAX_RECURSIVE_KCONFIG"
-          fi
+          # سكريبت بايثون ذكي لإزالة الاعتماد الدائري (Self-Dependency) بدقة دون المساس بالدرايفرات
+          python3 -c '
+          import glob
+          for path in glob.glob("drivers/input/touchscreen/**/Kconfig", recursive=True):
+              with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                  lines = f.readlines()
+              
+              current_config = None
+              new_lines = []
+              for line in lines:
+                  stripped = line.strip()
+                  if stripped.startswith("config "):
+                      current_config = stripped.split()[1]
+                  elif current_config and "depends on" in stripped and current_config in stripped:
+                      # تجاوز السطر الذي يسبب الاعتماد الدائري الذاتي فقط
+                      print(f"Fixing recursive dependency in {path}: removing self-dependency for {current_config}")
+                      continue
+                  new_lines.append(line)
+                  
+              with open(path, "w", encoding="utf-8") as f:
+                  f.writelines(new_lines)
+          print("Kconfig self-dependencies resolved successfully while preserving all drivers.")
+          '
 
           find . -name "Kconfig*" -type f -exec sed -i 's/\r//g' {} + || true
-          echo "Kconfig files patched successfully."
+          echo "All Kconfig conflicts resolved safely."
 
       - name: Configure Kernel Defconfig with LTO Options
         run: |
@@ -108,7 +115,7 @@ jobs:
           export PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r383902/bin:$PATH"
           
           make clean && make mrproper
-          make O=out {{ env.DEFCONFIG_NAME }}
+          make O=out ${{ env.DEFCONFIG_NAME }}
           
           # بناء النواة بالكامل باستخدام LLVM مع تفعيل LTO وجميع المتغيرات اللازمة
           make -j$(nproc) O=out LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
