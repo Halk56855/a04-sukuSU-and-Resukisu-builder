@@ -21,8 +21,16 @@ jobs:
 
       - name: Integrate Stable rksu (v3.0.0-30-legacy)
         run: |
-          # دمج الإصدار المستقرار والمدعوم طويل الأجل المذكور في التعليمات للاستقرار العالي[span_1](start_span)[span_1](end_span)
           curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s v3.0.0-30-legacy
+
+      - name: Fix MTK_CMDQ Type Redefinition Error
+        run: |
+          # حل تعارض نوع MTK_CMDQ وتوحيد التعريف لمنع توقف عملية syncconfig
+          if [ -f "drivers/soc/mediatek/Kconfig" ]; then
+            sed -i 's/tristate "MediaTek Command Queue"/bool "MediaTek Command Queue"/' drivers/soc/mediatek/Kconfig || true
+            sed -i '/config MTK_CMDQ/,/default/ s/tristate/bool/' drivers/soc/mediatek/Kconfig || true
+          fi
+          find . -name "Kconfig*" -type f -exec sed -i 's/\btristate\b.*MTK_CMDQ/bool "MediaTek Command Queue"/' {} + || true
 
       - name: Configure Kernel Defconfig
         run: |
@@ -54,7 +62,7 @@ jobs:
           export SUBARCH=arm64
           
           make clean && make mrproper
-          make O=out {{ env.DEFCONFIG_NAME }}
+          make O=out ${{ env.DEFCONFIG_NAME }}
           make -j$(nproc) O=out CROSS_COMPILE=aarch64-linux-gnu-
 
       - name: Package Kernel (AnyKernel3)
