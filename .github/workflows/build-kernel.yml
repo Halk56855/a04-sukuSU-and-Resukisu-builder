@@ -24,7 +24,6 @@ jobs:
           echo "Setting up Clang/LLVM toolchain directory..."
           mkdir -p toolchain/clang/host/linux-x86/clang-r383902
           
-          # تحميل أداة Clang/LLVM الرسمية مباشرة من GitHub Releases لضمان السرعة والاستقرار وتفادي أخطاء الأذونات
           wget -O llvm-toolchain.tar.xz "https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.6/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04.tar.xz" || \
           wget -O llvm-toolchain.tar.xz "https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu.tar.xz" || true
           
@@ -41,17 +40,28 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s v3.0.0-30-legacy
 
-      - name: Fix MTK_CMDQ Redefinition & Line Endings
+      - name: Fix Drivers and Kconfig Issues
         run: |
           echo "Cleaning up Kconfig files and fixing line endings..."
           find . -name "Kconfig*" -type f -exec dos2unix {} + || true
           find . -name "Kconfig" -type f -exec dos2unix {} + || true
 
-          # حل تعارض نوع MTK_CMDQ لمنع توقف عملية التهيئة
+          # حل تعارض نوع MTK_CMDQ
           if [ -f "drivers/soc/mediatek/Kconfig" ]; then
             sed -i '/config MTK_CMDQ/,/^$/ s/tristate/bool/g' drivers/soc/mediatek/Kconfig || true
             sed -i 's/tristate "MediaTek Command Queue"/bool "MediaTek Command Queue"/' drivers/soc/mediatek/Kconfig || true
           fi
+
+          # إصلاح أخطاء تعريفات شاشات اللمس (Touchscreen Kconfig choice errors) لمنع توقف syncconfig
+          for dir in hxchipset_hx83108x hxchipset_hx83112f hxchipset_hx83102p; do
+            KCONFIG_PATH="drivers/input/touchscreen/mediatek/$dir/Kconfig"
+            if [ -f "$KCONFIG_PATH" ]; then
+              echo "Fixing $KCONFIG_PATH..."
+              sed -i 's/default TOUCHSCREEN_HIMAX_INCELL/# default TOUCHSCREEN_HIMAX_INCELL/g' "$KCONFIG_PATH" || true
+              sed -i '/choice/d' "$KCONFIG_PATH" || true
+              sed -i '/endchoice/d' "$KCONFIG_PATH" || true
+            fi
+          done
 
           find . -name "Kconfig*" -type f -exec sed -i 's/\r//g' {} + || true
           echo "Kconfig files patched successfully."
@@ -92,7 +102,7 @@ jobs:
           export PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r383902/bin:$PATH"
           
           make clean && make mrproper
-          make O=out {{ env.DEFCONFIG_NAME }}
+          make O=out ${{ env.DEFCONFIG_NAME }}
           
           # بناء النواة بالكامل باستخدام LLVM مع تفعيل LTO وجميع المتغيرات اللازمة
           make -j$(nproc) O=out LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
