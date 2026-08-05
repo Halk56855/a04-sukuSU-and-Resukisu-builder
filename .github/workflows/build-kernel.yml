@@ -1,4 +1,4 @@
-name: Build Samsung A04 rksu Kernel
+name: Build Samsung A04m rksu Kernel
 
 on:
   workflow_dispatch:
@@ -7,32 +7,17 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
+      - name: Checkout Kernel Source (latest-B Branch)
+        uses: actions/checkout@v4
+        with:
+          repository: 'rsuntk-oss/android_kernel_samsung_a04m'
+          ref: 'latest-B'
+
       - name: Setup Build Environment
         run: |
           sudo apt update
           sudo apt upgrade -y
-          sudo apt install -y build-essential bc bison flex libssl-dev libelf-dev git wget curl python3 python-is-python3 python3-virtualenv zip tar gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-
-      - name: Download and Extract Kernel Source from Release
-        run: |
-          echo "Downloading Kernel.tar.gz from v1.0 release..."
-          curl -L -H "User-Agent: Mozilla/5.0" -o Kernel.tar.gz "https://github.com/Halk56855/android_kernel_samsung_a04f/releases/download/v1.0/Kernel.tar.gz"
-          
-          echo "Extracting Kernel archive..."
-          mkdir -p extracted_kernel
-          tar -xzf Kernel.tar.gz -C extracted_kernel
-          
-          shopt -s dotglob
-          if [ "$(ls -A extracted_kernel | wc -l)" -eq 1 ] && [ -d "extracted_kernel/$(ls -A extracted_kernel)" ]; then
-            INNER_DIR=$(ls -A extracted_kernel)
-            mv extracted_kernel/$INNER_DIR/* ./
-            rm -rf extracted_kernel
-          else
-            mv extracted_kernel/* ./
-            rm -rf extracted_kernel
-          fi
-          rm Kernel.tar.gz
-          echo "Kernel source extracted successfully."
+          sudo apt install -y build-essential bc bison flex libssl-dev libelf-dev git wget python3 python-is-python3 python3-virtualenv zip tar gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
       - name: Integrate rksu
         run: |
@@ -40,22 +25,26 @@ jobs:
 
       - name: Configure Kernel Defconfig
         run: |
-          DEFCONFIG_PATH="arch/arm64/configs/a04_defconfig"
-          if [ -f "$DEFCONFIG_PATH" ]; then
-            echo "CONFIG_LOCALVERSION=\"-physwizz\"" >> "$DEFCONFIG_PATH"
-            echo "CONFIG_LOCALVERSION_AUTO=n" >> "$DEFCONFIG_PATH"
-            echo "CONFIG_KSU=y" >> "$DEFCONFIG_PATH"
-            echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG_PATH"
-            echo "CONFIG_KPROBES=n" >> "$DEFCONFIG_PATH"
-            echo "CONFIG_HAVE_KPROBES=n" >> "$DEFCONFIG_PATH"
-            echo "CONFIG_KPROBE_EVENTS=n" >> "$DEFCONFIG_PATH"
-            echo "CONFIG_SECURITY_DEFEX=n" >> "$DEFCONFIG_PATH"
-            echo "CONFIG_PROCA=n" >> "$DEFCONFIG_PATH"
-            echo "CONFIG_KERNEL_GZIP=y" >> "$DEFCONFIG_PATH"
+          DEFCONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
+          echo "Using defconfig: $DEFCONFIG_FILE"
+          
+          if [ -f "$DEFCONFIG_FILE" ]; then
+            echo "CONFIG_LOCALVERSION=\"-physwizz\"" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_LOCALVERSION_AUTO=n" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_KSU=y" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_KPROBES=n" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_HAVE_KPROBES=n" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_KPROBE_EVENTS=n" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_SECURITY_DEFEX=n" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_PROCA=n" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_KERNEL_GZIP=y" >> "$DEFCONFIG_FILE"
             echo "Defconfig updated successfully."
+            
+            echo "DEFCONFIG_NAME=$(basename $DEFCONFIG_FILE)" >> $GITHUB_ENV
           else
-            echo "Warning: Defconfig path not found, searching..."
-            find arch/arm64/configs -name "*defconfig"
+            echo "Error: Defconfig not found!"
+            exit 1
           fi
 
       - name: Build Kernel
@@ -64,7 +53,7 @@ jobs:
           export SUBARCH=arm64
           
           make clean && make mrproper
-          make O=out a04_defconfig
+          make O=out {{ env.DEFCONFIG_NAME }}
           make -j$(nproc) O=out CROSS_COMPILE=aarch64-linux-gnu-
 
       - name: Package Kernel (AnyKernel3)
@@ -82,10 +71,10 @@ jobs:
           fi
           
           cd anykernel
-          zip -r9 ../Samsung-A04-rksu-Kernel.zip *
+          zip -r9 ../Samsung-A04m-rksu-Kernel.zip *
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Samsung-A04-rksu-Artifact
-          path: Samsung-A04-rksu-Kernel.zip
+          name: Samsung-A04m-rksu-Artifact
+          path: Samsung-A04m-rksu-Kernel.zip
