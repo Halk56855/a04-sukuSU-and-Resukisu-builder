@@ -1,4 +1,4 @@
-name: Build Samsung A04m rksu Kernel
+name: Build Samsung A04m Stable rksu Kernel
 
 on:
   workflow_dispatch:
@@ -19,9 +19,10 @@ jobs:
           sudo apt upgrade -y
           sudo apt install -y build-essential bc bison flex libssl-dev libelf-dev git wget python3 python-is-python3 python3-virtualenv zip tar gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Integrate rksu
+      - name: Integrate Stable rksu (v3.0.0-30-legacy)
         run: |
-          curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s main
+          # دمج الإصدار المستقرار والمدعوم طويل الأجل المذكور في التعليمات للاستقرار العالي[span_1](start_span)[span_1](end_span)
+          curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s v3.0.0-30-legacy
 
       - name: Configure Kernel Defconfig
         run: |
@@ -53,7 +54,7 @@ jobs:
           export SUBARCH=arm64
           
           make clean && make mrproper
-          make O=out {{ env.DEFCONFIG_NAME }}
+          make O=out ${{ env.DEFCONFIG_NAME }}
           make -j$(nproc) O=out CROSS_COMPILE=aarch64-linux-gnu-
 
       - name: Package Kernel (AnyKernel3)
@@ -71,10 +72,10 @@ jobs:
           fi
           
           cd anykernel
-          zip -r9 ../Samsung-A04m-rksu-Kernel.zip *
+          zip -r9 ../Samsung-A04m-Stable-rksu-Kernel.zip *
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Samsung-A04m-rksu-Artifact
-          path: Samsung-A04m-rksu-Kernel.zip
+          name: Samsung-A04m-Stable-rksu-Artifact
+          path: Samsung-A04m-Stable-rksu-Kernel.zip
