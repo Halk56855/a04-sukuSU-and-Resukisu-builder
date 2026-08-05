@@ -10,7 +10,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Build Environment
+      - name: Setup Build Environment & Toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -23,22 +23,14 @@ jobs:
             git \
             wget \
             python3 \
-            zip
-
-      - name: Setup Toolchain (Clang/GCC)
-        run: |
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git toolchain-gcc
-          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86_clang-r416183b.git toolchain-clang
+            zip \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu
 
       - name: Integrate SukiSU
         run: |
-          # يمكنك اختيار إما الفرع المدمج أو فرع LKM بناءً على متطلباتك:
-          
-          # استخدام الفرع المدمج (Builtin Branch):
+          # استخدام الفرع المدمج (Builtin Branch)
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
-          
-          # أو استخدام فرع LKM (Main Branch):
-          # curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
 
           # تعديل إعدادات النواة المطلوبة للأجهزة التي لا تدعم GKI
           DEFCONFIG_PATH="arch/arm64/configs/a04_defconfig"
@@ -52,10 +44,9 @@ jobs:
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="$PWD/toolchain-clang/bin:$PWD/toolchain-gcc/bin:$PATH"
           
           make O=out a04_defconfig
-          make -j$(nproc) O=out CC=clang CROSS_COMPILE=aarch64-linux-android-
+          make -j$(nproc) O=out CROSS_COMPILE=aarch64-linux-gnu-
 
       - name: Package Kernel (AnyKernel3)
         run: |
