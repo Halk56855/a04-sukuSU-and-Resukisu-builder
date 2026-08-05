@@ -19,24 +19,52 @@ jobs:
           sudo apt upgrade -y
           sudo apt install -y build-essential bc bison flex libssl-dev libelf-dev git wget python3 python-is-python3 python3-virtualenv zip tar dos2unix gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
+      - name: Setup Clang Toolchain
+        run: |
+          echo "Setting up Clang toolchain directory..."
+          mkdir -p toolchain/clang/host/linux-x86/clang-r383902
+          
+          # تحميل إصدار Clang متوافق رسمياً لتفادي خطأ عدم وجود المسار
+          wget -O clang.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r383902.tar.gz" || true
+          if [ -f "clang.tar.gz" ] && [ -s "clang.tar.gz" ]; then
+            tar -xzf clang.tar.gz -C toolchain/clang/host/linux-x86/clang-r383902/
+            rm clang.tar.gz
+          else
+            # بديل احتياطي في حال فشل الرابط مباشر
+            git clone https://github.com/chenxiaolong/Toolchains -b clang-r383902 --depth=1 temp_toolchain || true
+            if [ -d "temp_toolchain" ]; then
+              cp -r temp_toolchain/* toolchain/clang/host/linux-x86/clang-r383902/ || true
+              rm -rf temp_toolchain
+            fi
+          fi
+
       - name: Integrate Stable rksu (v3.0.0-30-legacy)
         run: |
           curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s v3.0.0-30-legacy
 
-      - name: Fix Kconfig Issues and MTK_CMDQ Redefinition
+      - name: Fix init/Kconfig and Kconfig Syntax Errors
         run: |
           echo "Cleaning up Kconfig files and fixing line endings..."
           find . -name "Kconfig*" -type f -exec dos2unix {} + || true
           find . -name "Kconfig" -type f -exec dos2unix {} + || true
 
-          echo "Resolving MTK_CMDQ type redefinition..."
+          # إصلاح خطأ Syntax Error في init/Kconfig الناتج عن حقن KernelSU
+          if [ -f "init/Kconfig" ]; then
+            sed -i '/kernelsu/d' init/Kconfig || true
+            # إعادة إضافة سطر المصدر بشكل صحيح وآمن قبل نهاية الملف أو القائمة
+            if grep -q "endmenu" init/Kconfig; then
+              sed -i '/^endmenu/i source "drivers/kernelsu/Kconfig"' init/Kconfig || true
+            else
+              echo 'source "drivers/kernelsu/Kconfig"' >> init/Kconfig
+            fi
+          fi
+
+          # حل تعارض نوع MTK_CMDQ
           if [ -f "drivers/soc/mediatek/Kconfig" ]; then
-            # توحيد نوع تعريف MTK_CMDQ لمنع تضارب bool و tristate
             sed -i '/config MTK_CMDQ/,/^$/ s/tristate/bool/g' drivers/soc/mediatek/Kconfig || true
             sed -i 's/tristate "MediaTek Command Queue"/bool "MediaTek Command Queue"/' drivers/soc/mediatek/Kconfig || true
           fi
 
-          # إزالة أي تعريفات مكررة محتملة أو رموز غير مدعومة
           find . -name "Kconfig*" -type f -exec sed -i 's/\r//g' {} + || true
           echo "Kconfig files patched successfully."
 
@@ -68,10 +96,11 @@ jobs:
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
+          export PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r383902/bin:$PATH"
           
           make clean && make mrproper
-          make O=out {{ env.DEFCONFIG_NAME }}
-          make -j$(nproc) O=out CROSS_COMPILE=aarch64-linux-gnu-
+          make O=out ${{ env.DEFCONFIG_NAME }}
+          make -j$(nproc) O=out CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
       - name: Package Kernel (AnyKernel3)
         run: |
