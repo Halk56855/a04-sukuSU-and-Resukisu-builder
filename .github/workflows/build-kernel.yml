@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-26.04
     container: debian:13
     steps:
       - name: Checkout Kernel Source (latest-B Branch)
@@ -46,13 +46,11 @@ jobs:
           find . -name "Kconfig*" -type f -exec dos2unix {} + || true
           find . -name "Kconfig" -type f -exec dos2unix {} + || true
 
-          # حل تعارض نوع MTK_CMDQ بأمان تام
           if [ -f "drivers/soc/mediatek/Kconfig" ]; then
             sed -i '/config MTK_CMDQ/,/^$/ s/tristate/bool/g' drivers/soc/mediatek/Kconfig || true
             sed -i 's/tristate "MediaTek Command Queue"/bool "MediaTek Command Queue"/' drivers/soc/mediatek/Kconfig || true
           fi
 
-          # سكريبت بايثون آمن 100% لمعالجة أخطاء choice value و default symbol دون مسح أي درايفر
           python3 -c '
           import glob
 
@@ -64,7 +62,6 @@ jobs:
                   
                   new_lines = []
                   for line in lines:
-                      # تعليق الأسطر التي تسبب خطأ choice default symbol غير المتوافق بشكل آمن
                       if "default symbol" in line or ("TOUCHSCREEN_HIMAX_INCELL" in line and "default" in line):
                           new_lines.append("# " + line.strip() + " # Fixed non-destructively\n")
                           continue
@@ -114,7 +111,6 @@ jobs:
           make clean && make mrproper
           make O=out {{ env.DEFCONFIG_NAME }}
           
-          # بناء النواة بالكامل باستخدام Clang والأدوات المساعدة المتوافقة تماماً
           make -j$(nproc) O=out LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
       - name: Package Kernel (AnyKernel3)
