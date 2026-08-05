@@ -99,7 +99,7 @@ jobs:
           export PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r383902/bin:$PATH"
           
           make clean && make mrproper
-          make O=out ${{ env.DEFCONFIG_NAME }}
+          make O=out {{ env.DEFCONFIG_NAME }}
           make -j$(nproc) O=out CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
       - name: Package Kernel (AnyKernel3)
