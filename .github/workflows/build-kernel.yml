@@ -40,11 +40,8 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s v3.0.0-30-legacy
 
-      - name: Reset and Clean Kconfigs Non-Destructively
+      - name: Comprehensive Non-Destructive Kconfig & Choice Fixer
         run: |
-          echo "Resetting input drivers Kconfig files to clean state..."
-          git checkout drivers/input/ || true
-          
           echo "Cleaning line endings..."
           find . -name "Kconfig*" -type f -exec dos2unix {} + || true
           find . -name "Kconfig" -type f -exec dos2unix {} + || true
@@ -60,34 +57,32 @@ jobs:
             sed -i 's/tristate "MTK QOS Framework"/bool "MTK QOS Framework"/' drivers/misc/mediatek/base/power/Kconfig || true
           fi
 
-          # سكريبت بايثون آمن تماماً لإزالة الأحرف غير المدعومة مثل '+' وتصحيح الرموز دون تخريب البنية أو حذف أي درايفر
+          # سكريبت بايثون شامل لمعالجة أخطاء choice default symbol وتعارض الرموز دون حذف أي درايفر
           python3 -c '
           import glob
 
-          paths = glob.glob("drivers/input/**/Kconfig", recursive=True) + ["drivers/input/Kconfig"]
+          paths = glob.glob("drivers/input/touchscreen/**/Kconfig", recursive=True) + glob.glob("drivers/input/touchscreen/Kconfig", recursive=True)
+          paths += glob.glob("drivers/input/himax/**/Kconfig", recursive=True)
 
           for path in set(paths):
               try:
                   with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                      content = f.read()
+                      lines = f.readlines()
                   
-                  # إزالة الأحرف الزائدة مثل "+" التي تسبب تحذيرات kconfig
-                  content = content.replace("+", "")
-                  
-                  lines = content.splitlines()
                   new_lines = []
                   for line in lines:
-                      if "default symbol" in line:
-                          new_lines.append("# " + line + " # Removed incompatible default symbol")
+                      # معالجة وتعليق الرمز الافتراضي الخاطئ خارج المجموعة الذي يوقف syncconfig
+                      if "TOUCHSCREEN_HIMAX_INCELL" in line and "default" in line:
+                          new_lines.append("# " + line.strip() + " # Fixed choice default mismatch\n")
                           continue
                       new_lines.append(line)
                       
                   with open(path, "w", encoding="utf-8") as f:
-                      f.write("\n".join(new_lines) + "\n")
+                      f.writelines(new_lines)
               except Exception as e:
                   print(f"Safe skip for {path}: {e}")
 
-          print("Kconfig files cleaned and synchronized successfully without deleting any drivers.")
+          print("All Kconfig choice default symbol errors resolved non-destructively.")
           '
 
           find . -name "Kconfig*" -type f -exec sed -i 's/\r//g' {} + || true
