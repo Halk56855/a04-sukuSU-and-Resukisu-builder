@@ -27,12 +27,18 @@ jobs:
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu
 
-      - name: Integrate SukiSU (Main Branch - LKM)
+      - name: Check Kernel Structure
         run: |
-          # استخدام فرع النظام الرئيسي (LKM) كما طلبت
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
+          if [ ! -d "drivers" ]; then
+            echo "Error: Kernel source files are missing in this repository branch!"
+            echo "Please upload the full Samsung A04 kernel source tree first."
+            exit 1
+          fi
 
-          # تعديل إعدادات النواة المطلوبة للأجهزة التي لا تدعم GKI
+      - name: Integrate SukiSU (Builtin Branch)
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
+
           DEFCONFIG_PATH="arch/arm64/configs/a04_defconfig"
           if [ -f "$DEFCONFIG_PATH" ]; then
             echo "CONFIG_KALLSYMS=y" >> "$DEFCONFIG_PATH"
