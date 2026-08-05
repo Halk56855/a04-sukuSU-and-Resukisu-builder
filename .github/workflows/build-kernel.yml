@@ -54,7 +54,7 @@ jobs:
           export SUBARCH=arm64
           
           make clean && make mrproper
-          make O=out ${{ env.DEFCONFIG_NAME }}
+          make O=out {{ env.DEFCONFIG_NAME }}
           make -j$(nproc) O=out CROSS_COMPILE=aarch64-linux-gnu-
 
       - name: Package Kernel (AnyKernel3)
