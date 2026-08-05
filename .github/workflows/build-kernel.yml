@@ -6,6 +6,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    container: debian:13
     steps:
       - name: Checkout Kernel Source (latest-B Branch)
         uses: actions/checkout@v4
@@ -15,9 +16,8 @@ jobs:
 
       - name: Setup Build Environment
         run: |
-          sudo apt update
-          sudo apt upgrade -y
-          sudo apt install -y build-essential bc bison flex libssl-dev libelf-dev git wget python3 python-is-python3 python3-virtualenv zip tar dos2unix gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          apt update
+          apt install -y build-essential bc bison flex libssl-dev libelf-dev git wget python3 python3-pip curl zip tar dos2unix gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
       - name: Setup Stable LLVM/Clang Toolchain (Direct Official Download)
         run: |
@@ -45,13 +45,13 @@ jobs:
           find . -name "Kconfig*" -type f -exec dos2unix {} + || true
           find . -name "Kconfig" -type f -exec dos2unix {} + || true
 
-          # حل تعارض نوع MTK_CMDQ بأمان تام دون حذف أي سطر جوهري
+          # حل تعارض نوع MTK_CMDQ بأمان تام
           if [ -f "drivers/soc/mediatek/Kconfig" ]; then
             sed -i '/config MTK_CMDQ/,/^$/ s/tristate/bool/g' drivers/soc/mediatek/Kconfig || true
             sed -i 's/tristate "MediaTek Command Queue"/bool "MediaTek Command Queue"/' drivers/soc/mediatek/Kconfig || true
           fi
 
-          # سكريبت بايثون آمن 100% (تصحيح الأخطاء فقط مع الحفاظ على كامل الدرايفرات والملفات)
+          # سكريبت بايثون آمن لتصحيح الأخطاء دون مسح أي درايفر أو ملف أساسي
           python3 -c '
           import glob
 
@@ -63,7 +63,6 @@ jobs:
                   
                   new_lines = []
                   for line in lines:
-                      # تصحيح المشاكل النحوية لتعريفات الشاشات بدقة
                       if "def_bool y" in line and ("hx8310" in path or "himax" in path):
                           line = "  bool\n"
                       elif "default symbol" in line:
@@ -76,7 +75,7 @@ jobs:
               except Exception as e:
                   print(f"Safe skip for {path}: {e}")
 
-          print("All Kconfig syntax and choice errors corrected successfully without deleting any driver.")
+          print("All Kconfig syntax and choice errors corrected successfully on Debian 13.")
           '
 
           find . -name "Kconfig*" -type f -exec sed -i 's/\r//g' {} + || true
@@ -115,7 +114,7 @@ jobs:
           make clean && make mrproper
           make O=out {{ env.DEFCONFIG_NAME }}
           
-          # بناء النواة بالكامل باستخدام Clang المخصص والمتوافق تماماً
+          # بناء النواة بالكامل باستخدام Clang المخصص على بيئة دبيان 13
           make -j$(nproc) O=out LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
       - name: Package Kernel (AnyKernel3)
