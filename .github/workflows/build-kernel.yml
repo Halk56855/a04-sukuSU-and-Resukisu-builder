@@ -19,42 +19,35 @@ jobs:
           sudo apt upgrade -y
           sudo apt install -y build-essential bc bison flex libssl-dev libelf-dev git wget python3 python-is-python3 python3-virtualenv zip tar dos2unix gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Setup Clang/LLVM Toolchain (clang-r383902)
+      - name: Setup Official LLVM/Clang Toolchain
         run: |
           echo "Setting up Clang/LLVM toolchain directory..."
           mkdir -p toolchain/clang/host/linux-x86/clang-r383902
           
-          # جلب المترجم المتوافق لتشغيل LLVM بشكل صحيح
-          git clone https://github.com/chenxiaolong/Toolchains -b clang-r383902 --depth=1 toolchain/clang/host/linux-x86/clang-r383902 || true
+          # تحميل أداة Clang/LLVM الرسمية مباشرة من GitHub Releases لضمان السرعة والاستقرار وتفادي أخطاء الأذونات
+          wget -O llvm-toolchain.tar.xz "https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.6/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04.tar.xz" || \
+          wget -O llvm-toolchain.tar.xz "https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/clang+llvm-18.1.8-x86_64-linux-gnu.tar.xz" || true
           
-          if [ ! -f "toolchain/clang/host/linux-x86/clang-r383902/bin/clang" ]; then
-            echo "Downloading Clang from Android prebuilts mirror..."
-            wget -O clang.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r383902.tar.gz" || true
-            if [ -f "clang.tar.gz" ] && [ -s "clang.tar.gz" ]; then
-              tar -xzf clang.tar.gz -C toolchain/clang/host/linux-x86/clang-r383902/
-              rm clang.tar.gz
-            fi
+          if [ -f "llvm-toolchain.tar.xz" ] && [ -s "llvm-toolchain.tar.xz" ]; then
+            tar -xf llvm-toolchain.tar.xz -C toolchain/clang/host/linux-x86/clang-r383902 --strip-components=1
+            rm llvm-toolchain.tar.xz
+            echo "LLVM toolchain installed successfully."
+          else
+            echo "Error: Failed to download LLVM toolchain!"
+            exit 1
           fi
 
       - name: Integrate Stable rksu (v3.0.0-30-legacy)
         run: |
           curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s v3.0.0-30-legacy
 
-      - name: Fix Kconfig Issues and MTK_CMDQ Redefinition
+      - name: Fix MTK_CMDQ Redefinition & Line Endings
         run: |
           echo "Cleaning up Kconfig files and fixing line endings..."
           find . -name "Kconfig*" -type f -exec dos2unix {} + || true
           find . -name "Kconfig" -type f -exec dos2unix {} + || true
 
-          if [ -f "init/Kconfig" ]; then
-            sed -i '/kernelsu/d' init/Kconfig || true
-            if grep -q "endmenu" init/Kconfig; then
-              sed -i '/^endmenu/i source "drivers/kernelsu/Kconfig"' init/Kconfig || true
-            else
-              echo 'source "drivers/kernelsu/Kconfig"' >> init/Kconfig
-            fi
-          fi
-
+          # حل تعارض نوع MTK_CMDQ لمنع توقف عملية التهيئة
           if [ -f "drivers/soc/mediatek/Kconfig" ]; then
             sed -i '/config MTK_CMDQ/,/^$/ s/tristate/bool/g' drivers/soc/mediatek/Kconfig || true
             sed -i 's/tristate "MediaTek Command Queue"/bool "MediaTek Command Queue"/' drivers/soc/mediatek/Kconfig || true
@@ -101,7 +94,7 @@ jobs:
           make clean && make mrproper
           make O=out {{ env.DEFCONFIG_NAME }}
           
-          # تفعيل متغيرات LLVM=1 و LLVM_IAS=1 لإتمام البناء باستخدام LLVM بالكامل مع LTO
+          # بناء النواة بالكامل باستخدام LLVM مع تفعيل LTO وجميع المتغيرات اللازمة
           make -j$(nproc) O=out LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
       - name: Package Kernel (AnyKernel3)
