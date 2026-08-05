@@ -1,4 +1,4 @@
-name: Build Samsung A04m Stable rksu Kernel
+name: Build Samsung A04m Stable rksu Kernel with LLVM & LTO
 
 on:
   workflow_dispatch:
@@ -19,22 +19,20 @@ jobs:
           sudo apt upgrade -y
           sudo apt install -y build-essential bc bison flex libssl-dev libelf-dev git wget python3 python-is-python3 python3-virtualenv zip tar dos2unix gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Setup Clang Toolchain
+      - name: Setup Clang/LLVM Toolchain (clang-r383902)
         run: |
-          echo "Setting up Clang toolchain directory..."
+          echo "Setting up Clang/LLVM toolchain directory..."
           mkdir -p toolchain/clang/host/linux-x86/clang-r383902
           
-          # تحميل إصدار Clang متوافق رسمياً لتفادي خطأ عدم وجود المسار
-          wget -O clang.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r383902.tar.gz" || true
-          if [ -f "clang.tar.gz" ] && [ -s "clang.tar.gz" ]; then
-            tar -xzf clang.tar.gz -C toolchain/clang/host/linux-x86/clang-r383902/
-            rm clang.tar.gz
-          else
-            # بديل احتياطي في حال فشل الرابط مباشر
-            git clone https://github.com/chenxiaolong/Toolchains -b clang-r383902 --depth=1 temp_toolchain || true
-            if [ -d "temp_toolchain" ]; then
-              cp -r temp_toolchain/* toolchain/clang/host/linux-x86/clang-r383902/ || true
-              rm -rf temp_toolchain
+          # جلب المترجم المتوافق لتشغيل LLVM بشكل صحيح
+          git clone https://github.com/chenxiaolong/Toolchains -b clang-r383902 --depth=1 toolchain/clang/host/linux-x86/clang-r383902 || true
+          
+          if [ ! -f "toolchain/clang/host/linux-x86/clang-r383902/bin/clang" ]; then
+            echo "Downloading Clang from Android prebuilts mirror..."
+            wget -O clang.tar.gz "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/master/clang-r383902.tar.gz" || true
+            if [ -f "clang.tar.gz" ] && [ -s "clang.tar.gz" ]; then
+              tar -xzf clang.tar.gz -C toolchain/clang/host/linux-x86/clang-r383902/
+              rm clang.tar.gz
             fi
           fi
 
@@ -42,16 +40,14 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s v3.0.0-30-legacy
 
-      - name: Fix init/Kconfig and Kconfig Syntax Errors
+      - name: Fix Kconfig Issues and MTK_CMDQ Redefinition
         run: |
           echo "Cleaning up Kconfig files and fixing line endings..."
           find . -name "Kconfig*" -type f -exec dos2unix {} + || true
           find . -name "Kconfig" -type f -exec dos2unix {} + || true
 
-          # إصلاح خطأ Syntax Error في init/Kconfig الناتج عن حقن KernelSU
           if [ -f "init/Kconfig" ]; then
             sed -i '/kernelsu/d' init/Kconfig || true
-            # إعادة إضافة سطر المصدر بشكل صحيح وآمن قبل نهاية الملف أو القائمة
             if grep -q "endmenu" init/Kconfig; then
               sed -i '/^endmenu/i source "drivers/kernelsu/Kconfig"' init/Kconfig || true
             else
@@ -59,7 +55,6 @@ jobs:
             fi
           fi
 
-          # حل تعارض نوع MTK_CMDQ
           if [ -f "drivers/soc/mediatek/Kconfig" ]; then
             sed -i '/config MTK_CMDQ/,/^$/ s/tristate/bool/g' drivers/soc/mediatek/Kconfig || true
             sed -i 's/tristate "MediaTek Command Queue"/bool "MediaTek Command Queue"/' drivers/soc/mediatek/Kconfig || true
@@ -68,7 +63,7 @@ jobs:
           find . -name "Kconfig*" -type f -exec sed -i 's/\r//g' {} + || true
           echo "Kconfig files patched successfully."
 
-      - name: Configure Kernel Defconfig
+      - name: Configure Kernel Defconfig with LTO Options
         run: |
           DEFCONFIG_FILE=$(find arch/arm64/configs -name "*defconfig" | head -n 1)
           echo "Using defconfig: $DEFCONFIG_FILE"
@@ -84,15 +79,20 @@ jobs:
             echo "CONFIG_SECURITY_DEFEX=n" >> "$DEFCONFIG_FILE"
             echo "CONFIG_PROCA=n" >> "$DEFCONFIG_FILE"
             echo "CONFIG_KERNEL_GZIP=y" >> "$DEFCONFIG_FILE"
-            echo "Defconfig updated successfully."
             
+            # تفعيل خيارات LTO (Link-Time Optimization) عبر Clang
+            echo "CONFIG_LTO_CLANG=y" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_LTO_CLANG_THIN=y" >> "$DEFCONFIG_FILE"
+            echo "CONFIG_THINLTO=y" >> "$DEFCONFIG_FILE"
+            
+            echo "Defconfig updated successfully with LTO."
             echo "DEFCONFIG_NAME=$(basename $DEFCONFIG_FILE)" >> $GITHUB_ENV
           else
             echo "Error: Defconfig not found!"
             exit 1
           fi
 
-      - name: Build Kernel
+      - name: Build Kernel with LLVM and LTO
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
@@ -100,7 +100,9 @@ jobs:
           
           make clean && make mrproper
           make O=out {{ env.DEFCONFIG_NAME }}
-          make -j$(nproc) O=out CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          
+          # تفعيل متغيرات LLVM=1 و LLVM_IAS=1 لإتمام البناء باستخدام LLVM بالكامل مع LTO
+          make -j$(nproc) O=out LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
       - name: Package Kernel (AnyKernel3)
         run: |
@@ -117,10 +119,10 @@ jobs:
           fi
           
           cd anykernel
-          zip -r9 ../Samsung-A04m-Stable-rksu-Kernel.zip *
+          zip -r9 ../Samsung-A04m-Stable-rksu-LLVM-LTO-Kernel.zip *
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Samsung-A04m-Stable-rksu-Artifact
-          path: Samsung-A04m-Stable-rksu-Kernel.zip
+          name: Samsung-A04m-Stable-rksu-LLVM-LTO-Artifact
+          path: Samsung-A04m-Stable-rksu-LLVM-LTO-Kernel.zip
