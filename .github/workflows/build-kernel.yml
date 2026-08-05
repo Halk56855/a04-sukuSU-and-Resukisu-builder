@@ -24,7 +24,6 @@ jobs:
           echo "Setting up Clang/LLVM toolchain directory..."
           mkdir -p toolchain/clang/host/linux-x86/clang-r383902
           
-          # التحميل المباشر والمضمون من الإصدارات الرسمية لـ LLVM لتفادي أخطاء 404 نهائياً
           wget -O llvm-toolchain.tar.xz "https://github.com/llvm/llvm-project/releases/download/llvmorg-17.0.6/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04.tar.xz"
           
           if [ -f "llvm-toolchain.tar.xz" ] && [ -s "llvm-toolchain.tar.xz" ]; then
@@ -52,7 +51,7 @@ jobs:
             sed -i 's/tristate "MediaTek Command Queue"/bool "MediaTek Command Queue"/' drivers/soc/mediatek/Kconfig || true
           fi
 
-          # سكريبت بايثون ذكي ودقيق لإزالة الاعتماد الدائري الذاتي فقط دون مسح أي درايفر
+          # سكريبت بايثون متطور لإصلاح الاعتمادات الذاتية وأخطاء choice value في ملفات Kconfig للشاشات
           python3 -c '
           import glob
           for path in glob.glob("drivers/input/touchscreen/**/Kconfig", recursive=True):
@@ -66,13 +65,24 @@ jobs:
                   if stripped.startswith("config "):
                       current_config = stripped.split()[1]
                   elif current_config and "depends on" in stripped and current_config in stripped:
-                      print(f"Fixing recursive dependency in {path}: removing self-dependency for {current_config}")
                       continue
+                  # معالجة مشكلة choice value خارج الـ choice group عبر تحويلها إلى bool قياسي
+                  if "config TOUCHSCREEN_HIMAX_INCELL" in stripped or "def_bool" in stripped or "choice" in stripped:
+                      line = line.replace("def_bool", "bool").replace("optional", "")
                   new_lines.append(line)
                   
               with open(path, "w", encoding="utf-8") as f:
                   f.writelines(new_lines)
-          print("Kconfig self-dependencies resolved successfully while preserving all drivers.")
+
+          # تنظيف إضافي لملفات Himax Kconfig لمنع أخطاء الوقف
+          for path in glob.glob("drivers/input/touchscreen/mediatek/**/Kconfig", recursive=True):
+              with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                  content = f.read()
+              content = content.replace("default symbol", "# default symbol")
+              with open(path, "w", encoding="utf-8") as f:
+                  f.write(content)
+
+          print("Kconfig conflicts and choice errors resolved successfully.")
           '
 
           find . -name "Kconfig*" -type f -exec sed -i 's/\r//g' {} + || true
@@ -109,7 +119,7 @@ jobs:
           export PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r383902/bin:$PATH"
           
           make clean && make mrproper
-          make O=out {{ env.DEFCONFIG_NAME }}
+          make O=out ${{ env.DEFCONFIG_NAME }}
           
           # بناء النواة بالكامل باستخدام Clang المخصص والمتوافق تماماً مع النواة
           make -j$(nproc) O=out LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
