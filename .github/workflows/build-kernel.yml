@@ -27,10 +27,10 @@ jobs:
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu
 
-      - name: Integrate SukiSU
+      - name: Integrate SukiSU (Main Branch - LKM)
         run: |
-          # استخدام الفرع المدمج (Builtin Branch)
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
+          # استخدام فرع النظام الرئيسي (LKM) كما طلبت
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
 
           # تعديل إعدادات النواة المطلوبة للأجهزة التي لا تدعم GKI
           DEFCONFIG_PATH="arch/arm64/configs/a04_defconfig"
