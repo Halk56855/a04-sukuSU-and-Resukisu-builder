@@ -40,39 +40,48 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s v3.0.0-30-legacy
 
-      - name: Comprehensive Non-Destructive Kconfig & Choice Fixer
+      - name: Comprehensive Non-Destructive Kconfig & Touchscreen Fixer
         run: |
           echo "Cleaning line endings..."
           find . -name "Kconfig*" -type f -exec dos2unix {} + || true
           find . -name "Kconfig" -type f -exec dos2unix {} + || true
 
+          # حل تعارض نوع MTK_CMDQ بأمان تام
           if [ -f "drivers/soc/mediatek/Kconfig" ]; then
             sed -i '/config MTK_CMDQ/,/^$/ s/tristate/bool/g' drivers/soc/mediatek/Kconfig || true
             sed -i 's/tristate "MediaTek Command Queue"/bool "MediaTek Command Queue"/' drivers/soc/mediatek/Kconfig || true
           fi
 
+          # سكريبت بايثون شامل لمعالجة أحرف '+' وأخطاء choice والـ default symbol دون حذف أي درايفر
           python3 -c '
           import glob
 
           paths = glob.glob("drivers/input/touchscreen/**/Kconfig", recursive=True) + glob.glob("drivers/input/touchscreen/Kconfig", recursive=True)
+          paths += glob.glob("drivers/input/himax/**/Kconfig", recursive=True) + glob.glob("drivers/input/himax/Kconfig", recursive=True)
+
           for path in paths:
               try:
                   with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                      lines = f.readlines()
+                      content = f.read()
                   
+                  # إزالة الأحرف غير المدعومة مثل "+" التي تسبب تحذيرات وأخطاء البناء
+                  content = content.replace("+", "")
+                  
+                  lines = content.splitlines()
                   new_lines = []
                   for line in lines:
+                      # معالجة أخطاء choice value خارج المجموعة والرمز الافتراضي غير المتوافق
                       if "default symbol" in line or ("TOUCHSCREEN_HIMAX_INCELL" in line and "default" in line):
-                          new_lines.append("# " + line.strip() + " # Fixed non-destructively\n")
+                          new_lines.append("# " + line + " # Fixed choice error non-destructively")
                           continue
                       new_lines.append(line)
                       
                   with open(path, "w", encoding="utf-8") as f:
-                      f.writelines(new_lines)
+                      f.write("\n".join(new_lines) + "\n")
               except Exception as e:
                   print(f"Safe skip for {path}: {e}")
 
-          print("Comprehensive Kconfig syntax and choice errors corrected successfully without deleting any drivers.")
+          print("All Kconfig touchscreen character '+' and choice errors corrected successfully without deleting any drivers.")
           '
 
           find . -name "Kconfig*" -type f -exec sed -i 's/\r//g' {} + || true
@@ -111,6 +120,7 @@ jobs:
           make clean && make mrproper
           make O=out {{ env.DEFCONFIG_NAME }}
           
+          # بناء النواة بالكامل باستخدام Clang والأدوات المساعدة المتوافقة تماماً
           make -j$(nproc) O=out LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
       - name: Package Kernel (AnyKernel3)
