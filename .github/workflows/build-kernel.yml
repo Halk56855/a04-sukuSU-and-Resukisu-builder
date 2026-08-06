@@ -1,4 +1,4 @@
-name: Build Samsung Galaxy A04 Kernel with StatiXOS Clang & LTO
+name: Build Samsung Galaxy A04/A05 Kernel with StatiXOS Clang & LTO
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ jobs:
       - name: Checkout Kernel Source (linux-4.19.y Branch)
         uses: actions/checkout@v4
         with:
-          repository: 'rsuntk/kernel_samsung_a05m'
+          repository: 'Samsung-Galaxy-G85-JDM/kernel_samsung_a05m'
           ref: 'linux-4.19.y'
 
       - name: Setup Build Environment
@@ -45,7 +45,7 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s v3.0.0-30-legacy
 
-      - name: Safe Precision Fix for Touchscreen Kconfig & Syntax Errors
+      - name: Safe Precision Fix for Touchscreen Kconfig Choice Mismatches
         run: |
           echo "Restoring drivers and applying precise safe fix for touchscreen Kconfig..."
           git checkout drivers/input/touchscreen/ || true
@@ -110,7 +110,7 @@ jobs:
           make clean && make mrproper
           make O=out {{ env.DEFCONFIG_NAME }}
           
-          # توليد التكوين عبر olddefconfig لتجاوز أخطاء syncconfig وضمان إنشاء ملف .config بنجاح
+          # ضمان إنشاء ملف .config وتحديثه بسلام تام دون أخطاء syncconfig
           yes "" | make O=out olddefconfig || make O=out oldconfig
           
           # البناء الكامل للنواة مع دعم LLVM و LTO
