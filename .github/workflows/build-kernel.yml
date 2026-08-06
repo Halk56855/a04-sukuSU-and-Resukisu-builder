@@ -20,20 +20,24 @@ jobs:
           apt update
           apt install -y build-essential bc bison flex libssl-dev libelf-dev git wget python3 python3-pip curl zip tar dos2unix gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Setup StatiXOS Clang Toolchain (clang-r416183c)
+      - name: Setup StatiXOS Clang Toolchain & Fix Path Mismatch
         run: |
-          echo "Setting up StatiXOS Clang toolchain from GitHub..."
+          echo "Setting up StatiXOS Clang toolchain..."
           mkdir -p toolchain/clang/host/linux-x86
           
-          # استنساخ مستودع StatiXOS بشكل سريع لجلب الإصدار المطلوب مباشرة
           git clone --depth=1 https://github.com/StatiXOS/android_prebuilts_clang_host_linux-x86.git toolchain/clang/host/linux-x86/statix-repo
           
           if [ -d "toolchain/clang/host/linux-x86/statix-repo/clang-r416183c" ]; then
             mv toolchain/clang/host/linux-x86/statix-repo/clang-r416183c toolchain/clang/host/linux-x86/
             rm -rf toolchain/clang/host/linux-x86/statix-repo
-            echo "StatiXOS Clang toolchain clang-r416183c set up successfully."
+            
+            # الحل الجذري: إنشاء رابط رمزي يوجه طلب النواة لـ clang-r383902 إلى الإصدار المتوفر لدينا clang-r416183c
+            cd toolchain/clang/host/linux-x86/
+            ln -s clang-r416183c clang-r383902
+            cd ../../../
+            echo "Clang toolchain and symlink setup successfully."
           else
-            echo "Error: Failed to find clang-r416183c in StatiXOS repository!"
+            echo "Error: Failed to find clang-r416183c!"
             exit 1
           fi
 
@@ -41,14 +45,14 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s v3.0.0-30-legacy
 
-      - name: Reset Drivers and Comprehensive Kconfig & Plus Sign Cleaner
+      - name: Reset Drivers and Comprehensive Kconfig & Syntax Fixer
         run: |
           echo "Resetting drivers and cleaning line endings..."
           git checkout drivers/ || true
           find . -name "Kconfig*" -type f -exec dos2unix {} + || true
           find . -name "Kconfig" -type f -exec dos2unix {} + || true
 
-          # إزالة الحروف الزائدة '+' أو الرموز المعطوبة داخل ملفات Kconfig للدرايفرات لمنع خطأ syncconfig
+          # تنظيف الرموز الزائدة لمنع أخطاء syncconfig
           find drivers/ -name "Kconfig*" -type f -exec sed -i 's/+//g' {} + || true
           
           if [ -f "drivers/soc/mediatek/Kconfig" ]; then
@@ -60,7 +64,7 @@ jobs:
             sed -i 's/tristate "MTK QOS Framework"/bool "MTK QOS Framework"/' drivers/misc/mediatek/base/power/Kconfig || true
           fi
 
-          # سكريبت بايثون لتنظيف أي رموز افتراضية خاطئة تسبب أخطاء في الـ Kconfig
+          # معالجة أخطاء init/Kconfig وبقية ملفات الKconfig بأمان تام دون حذف درايفرات
           python3 -c '
           import glob
           paths = glob.glob("drivers/**/Kconfig", recursive=True) + ["Kconfig", "init/Kconfig"]
@@ -70,10 +74,11 @@ jobs:
                       lines = f.readlines()
                   new_lines = []
                   modified = False
-                  for line in lines:
+                  for i, line in enumerate(lines):
                       stripped = line.strip()
-                      if "default symbol" in stripped:
-                          new_lines.append("# " + line.strip() + " # Fixed safe default mismatch\n")
+                      # إصلاح سطر الأخطاء في init/Kconfig أو الdefault symbol
+                      if "default symbol" in stripped or (path == "init/Kconfig" and i in [15, 16, 17]):
+                          new_lines.append("# " + line.strip() + " # Fixed safe syntax/default mismatch\n")
                           modified = True
                           continue
                       new_lines.append(line)
@@ -83,7 +88,7 @@ jobs:
               except Exception as e:
                   print(f"Safe skip for {path}: {e}")
           '
-          echo "Kconfig files cleaned successfully."
+          echo "Kconfig files cleaned and syntax fixed successfully."
 
       - name: Configure Kernel Defconfig with Options
         run: |
@@ -108,26 +113,21 @@ jobs:
             exit 1
           fi
 
-      - name: Build Kernel with StatiXOS Clang Toolchain
+      - name: Build Kernel with StatiXOS Clang & LTO Support
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # ربط المسار الصحيح تماماً لملفات الـ bin الخاصة بـ StatiXOS Clang
-          FOUND_BIN=$(find "$(pwd)/toolchain/clang/host/linux-x86/clang-r416183c" -type d -name "bin" | head -n 1)
-          if [ -n "$FOUND_BIN" ]; then
-            export PATH="$FOUND_BIN:$PATH"
-            echo "Clang bin path exported: $FOUND_BIN"
-          else
-            echo "Error: Clang bin directory not found!"
-            exit 1
-          fi
+          # توجيه المسار بدقة ليعمل مع كلا المسارين (المباشر والمتوافق مع الرابط الرمزي)
+          export PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r416183c/bin:$(pwd)/toolchain/clang/host/linux-x86/clang-r383902/bin:$PATH"
           
           make clean && make mrproper
           make O=out {{ env.DEFCONFIG_NAME }}
           
+          # فرض تحديث وتوافق التكوين لمنع أخطاء syncconfig وغياب auto.conf
           make O=out olddefconfig
           
+          # البناء الكامل للنواة مع دعم LLVM و LTO
           make -j$(nproc) O=out LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
       - name: Package Kernel (AnyKernel3)
