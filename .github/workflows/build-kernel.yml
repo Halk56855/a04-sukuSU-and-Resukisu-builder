@@ -1,4 +1,4 @@
-name: Build Samsung A04m Stable rksu Kernel with Clang r596125 & LTO
+name: Build Samsung A04m Stable rksu Kernel with GitGud Clang & LTO
 
 on:
   workflow_dispatch:
@@ -20,25 +20,20 @@ jobs:
           apt update
           apt install -y build-essential bc bison flex libssl-dev libelf-dev git wget python3 python3-pip curl zip tar dos2unix gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Setup Android Clang Toolchain (clang-r596125)
+      - name: Setup Clang Toolchain from GitGud
         run: |
-          echo "Setting up Android Clang toolchain (clang-r596125)..."
-          mkdir -p toolchain/clang/host/linux-x86
+          echo "Setting up Clang toolchain from GitGud repository..."
+          mkdir -p toolchain/clang/host/linux-x86/clang-r596125
           
-          # استنساخ ذكي وسريع لجلب إصدار clang-r596125 فقط دون تحميل باقي الحجم الهائل للمستودع
-          git clone --filter=blob:none --no-checkout https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 toolchain/clang/host/linux-x86/repo
-          cd toolchain/clang/host/linux-x86/repo
-          git sparse-checkout init --cone
-          git sparse-checkout set clang-r596125
-          git checkout refs/heads/mirror-goog-main-llvm-toolchain-source
-          mv clang-r596125 ../
-          cd ../
-          rm -rf repo
+          git clone https://gitgud.io/aosp/toolchain/llvm-project.git toolchain/clang-llvm-src
           
-          if [ -d "toolchain/clang/host/linux-x86/clang-r596125" ]; then
-            echo "Android Clang toolchain clang-r596125 set up successfully."
+          # نقل محتويات المستودع أو ضبط المسار بالشكل المتوافق مع مسارات البناء
+          if [ -d "toolchain/clang-llvm-src" ]; then
+            rm -rf toolchain/clang/host/linux-x86/clang-r596125
+            mv toolchain/clang-llvm-src toolchain/clang/host/linux-x86/clang-r596125
+            echo "Clang toolchain from GitGud set up successfully."
           else
-            echo "Error: Failed to set up Android Clang toolchain!"
+            echo "Error: Failed to clone Clang toolchain from GitGud!"
             exit 1
           fi
 
@@ -55,18 +50,15 @@ jobs:
           find . -name "Kconfig*" -type f -exec dos2unix {} + || true
           find . -name "Kconfig" -type f -exec dos2unix {} + || true
 
-          # حل تعارض نوع MTK_CMDQ بأمان تام
           if [ -f "drivers/soc/mediatek/Kconfig" ]; then
             sed -i '/config MTK_CMDQ/,/^$/ s/tristate/bool/g' drivers/soc/mediatek/Kconfig || true
             sed -i 's/tristate "MediaTek Command Queue"/bool "MediaTek Command Queue"/' drivers/soc/mediatek/Kconfig || true
           fi
 
-          # حل تعارض نوع MTK_QOS_FRAMEWORK بأمان تام
           if [ -f "drivers/misc/mediatek/base/power/Kconfig" ]; then
             sed -i 's/tristate "MTK QOS Framework"/bool "MTK QOS Framework"/' drivers/misc/mediatek/base/power/Kconfig || true
           fi
 
-          # سكريبت بايثون آمن جداً لمعالجة مشكلة choice default symbol دون تخريب البنية أو حذف أي درايفر
           python3 -c '
           import glob
 
@@ -123,19 +115,30 @@ jobs:
             exit 1
           fi
 
-      - name: Build Kernel with Android Clang r596125
+      - name: Build Kernel with GitGud Clang Toolchain
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r596125/bin:$PATH"
+          
+          # التحقق من مسار الـ bin ضمن أداة Clang المستنسخة
+          if [ -d "$(pwd)/toolchain/clang/host/linux-x86/clang-r596125/bin" ]; then
+            export PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r596125/bin:$PATH"
+          else
+            # البحث التلقائي عن مجلد الـ bin إذا كان متداخلًا
+            FOUND_BIN=$(find "$(pwd)/toolchain/clang/host/linux-x86/clang-r596125" -type d -name "bin" | head -n 1)
+            if [ -n "$FOUND_BIN" ]; then
+              export PATH="$(dirname "$FOUND_BIN"):$PATH"
+            else
+              echo "Error: Clang bin directory not found!"
+              exit 1
+            fi
+          fi
           
           make clean && make mrproper
           make O=out {{ env.DEFCONFIG_NAME }}
           
-          # فرض تحديث ومزامنة التكوين لتجنب خطأ غياب ملف .config و syncconfig نهائياً
           make O=out olddefconfig
           
-          # بناء النواة بالكامل باستخدام أداة Clang المحدثة والأدوات المساعدة المتوافقة تماماً
           make -j$(nproc) O=out LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
       - name: Package Kernel (AnyKernel3)
@@ -153,10 +156,10 @@ jobs:
           fi
           
           cd anykernel
-          zip -r9 ../Samsung-A04m-Stable-rksu-Clang-r596125-Kernel.zip *
+          zip -r9 ../Samsung-A04m-Stable-rksu-GitGudClang-Kernel.zip *
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Samsung-A04m-Stable-rksu-Clang-r596125-Artifact
-          path: Samsung-A04m-Stable-rksu-Clang-r596125-Kernel.zip
+          name: Samsung-A04m-Stable-rksu-GitGudClang-Artifact
+          path: Samsung-A04m-Stable-rksu-GitGudClang-Kernel.zip
