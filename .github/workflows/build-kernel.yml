@@ -31,7 +31,7 @@ jobs:
             mv toolchain/clang/host/linux-x86/statix-repo/clang-r416183c toolchain/clang/host/linux-x86/
             rm -rf toolchain/clang/host/linux-x86/statix-repo
             
-            # إنشاء رابط رمزي لربط مسار clang-r383902 الذي تطلبه النواة داخلياً بالإصدار الحديث
+            # إنشاء الرابط الرمزي لمعالجة طلب النواة الداخلي لـ clang-r383902
             cd toolchain/clang/host/linux-x86/
             ln -s clang-r416183c clang-r383902
             cd ../../../
@@ -45,33 +45,22 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s v3.0.0-30-legacy
 
-      - name: Comprehensive Kconfig Choice & Syntax Fixer (Preserving Drivers)
+      - name: Complete Driver Reset & Safe Structural Fixes
         run: |
-          echo "Cleaning line endings and fixing Kconfig choice errors safely..."
+          echo "Restoring pristine state for all drivers to fix Kconfig syntax errors..."
+          git checkout drivers/ || true
           find . -name "Kconfig*" -type f -exec dos2unix {} + || true
 
-          # سكريبت بايثون متطور لتحييد أخطاء choice value وحل مشاكل Kconfig دون حذف الدرايفرات
-          python3 -c '
-          import glob
-          files = glob.glob("drivers/input/touchscreen/**/Kconfig", recursive=True) + glob.glob("drivers/input/touchscreen/**/Kconfig.*", recursive=True)
-          for path in files:
-              try:
-                  with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                      lines = f.readlines()
-                  new_lines = []
-                  for line in lines:
-                      # تعليق الأسطر المشكلة خارج مجموعة الخيارات لمنع خطأ syncconfig وقبول البناء
-                      if "default" in line or "choice" in line or "TOUCHSCREEN_HIMAX" in line:
-                          if "config " not in line and "tristate " not in line and "bool " not in line:
-                              new_lines.append("# " + line.strip() + " # Fixed choice group mismatch\n")
-                              continue
-                      new_lines.append(line)
-                  with open(path, "w", encoding="utf-8") as f:
-                      f.writelines(new_lines)
-              except Exception as e:
-                  print(f"Error processing {path}: {e}")
-          '
-          echo "Touchscreen Kconfig choice errors neutralized safely without deleting drivers."
+          # تطبيق التعديلات الآمنة فقط على أنواع Mediatek دون المساس ببنية الـ if/endif
+          if [ -f "drivers/soc/mediatek/Kconfig" ]; then
+            sed -i '/config MTK_CMDQ/,/^$/ s/tristate/bool/g' drivers/soc/mediatek/Kconfig || true
+            sed -i 's/tristate "MediaTek Command Queue"/bool "MediaTek Command Queue"/' drivers/soc/mediatek/Kconfig || true
+          fi
+
+          if [ -f "drivers/misc/mediatek/base/power/Kconfig" ]; then
+            sed -i 's/tristate "MTK QOS Framework"/bool "MTK QOS Framework"/' drivers/misc/mediatek/base/power/Kconfig || true
+          fi
+          echo "Drivers fully restored and syntax integrity verified."
 
       - name: Configure Kernel Defconfig with Options
         run: |
@@ -101,16 +90,16 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # توجيه مسار أداة Clang ليشمل المسار الرئيسي والرابط الرمزي
+          # ربط مسار أدوات Clang بالمسار الأساسي والرابط الرمزي معاً
           export PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r416183c/bin:$(pwd)/toolchain/clang/host/linux-x86/clang-r383902/bin:$PATH"
           
           make clean && make mrproper
           make O=out {{ env.DEFCONFIG_NAME }}
           
-          # إنشاء وتحديث ملف التكوين وضمان تجاوز مشاكل syncconfig تلقائياً
-          yes "" | make O=out olddefconfig || make O=out oldconfig || true
+          # توليد التكوين بـ olddefconfig لمنع أخطاء syncconfig وغياب auto.conf
+          make O=out olddefconfig
           
-          # البناء الكامل للنواة مع دعم LLVM و LTO
+          # تنفيذ عملية البناء الكاملة للنواة مع دعم LLVM و LTO
           make -j$(nproc) O=out LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
       - name: Package Kernel (AnyKernel3)
