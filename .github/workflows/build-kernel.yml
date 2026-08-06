@@ -40,8 +40,11 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s v3.0.0-30-legacy
 
-      - name: Comprehensive Non-Destructive Kconfig & Choice Fixer
+      - name: Reset Drivers and Safe Kconfig Fixer
         run: |
+          echo "Resetting all drivers and Kconfig files to pristine state..."
+          git checkout drivers/ || true
+          
           echo "Cleaning line endings..."
           find . -name "Kconfig*" -type f -exec dos2unix {} + || true
           find . -name "Kconfig" -type f -exec dos2unix {} + || true
@@ -57,12 +60,11 @@ jobs:
             sed -i 's/tristate "MTK QOS Framework"/bool "MTK QOS Framework"/' drivers/misc/mediatek/base/power/Kconfig || true
           fi
 
-          # سكريبت بايثون شامل لإصلاح وتعليق الأسطر التي تسبب أخطاء choice default symbol و choice values خارج المجموعات
+          # سكريبت بايثون آمن جداً لمعالجة مشكلة choice default symbol دون تخريب البنية أو حذف أي درايفر
           python3 -c '
           import glob
 
-          paths = glob.glob("drivers/input/touchscreen/**/Kconfig", recursive=True) + glob.glob("drivers/input/touchscreen/Kconfig", recursive=True)
-          paths += glob.glob("drivers/input/himax/**/Kconfig", recursive=True)
+          paths = glob.glob("drivers/**/Kconfig", recursive=True) + ["Kconfig"]
 
           for path in set(paths):
               try:
@@ -70,24 +72,23 @@ jobs:
                       lines = f.readlines()
                   
                   new_lines = []
+                  modified = False
                   for line in lines:
                       stripped = line.strip()
-                      # تعليق الرموز الافتراضية الخاطئة والمجموعات المتعارضة التي توقف syncconfig
-                      if "TOUCHSCREEN_HIMAX_INCELL" in stripped and "default" in stripped:
-                          new_lines.append("# " + line.strip() + " # Fixed choice default mismatch\n")
-                          continue
-                      if stripped.startswith("choice") or stripped.startswith("endchoice"):
-                          # تحويل الاختيارات المعطوبة إلى خيارات عادية لمنع خطأ choice value used outside its choice group
-                          new_lines.append("# " + line.strip() + " # Converted choice block\n")
+                      # تعليق الأسطر الافتراضية المعطوبة فقط التي تسبب أخطاء syncconfig دون المساس بالهيكل
+                      if "default symbol" in stripped or ("TOUCHSCREEN_HIMAX_INCELL" in stripped and "default" in stripped):
+                          new_lines.append("# " + line.strip() + " # Fixed safe default mismatch\n")
+                          modified = True
                           continue
                       new_lines.append(line)
                       
-                  with open(path, "w", encoding="utf-8") as f:
-                      f.writelines(new_lines)
+                  if modified:
+                      with open(path, "w", encoding="utf-8") as f:
+                          f.writelines(new_lines)
               except Exception as e:
                   print(f"Safe skip for {path}: {e}")
 
-          print("All Kconfig choice and syntax errors resolved non-destructively.")
+          print("Kconfig files cleaned and fixed safely without syntax corruption.")
           '
 
           find . -name "Kconfig*" -type f -exec sed -i 's/\r//g' {} + || true
@@ -126,8 +127,8 @@ jobs:
           make clean && make mrproper
           make O=out {{ env.DEFCONFIG_NAME }}
           
-          # ضمان إنشاء ملف التكوين وتجاوز أي أخطاء متوقفة عبر olddefconfig
-          make O=out olddefconfig || true
+          # فرض تحديث ومزامنة التكوين لتجنب خطأ غياب ملف .config و syncconfig نهائياً
+          make O=out olddefconfig
           
           # بناء النواة بالكامل باستخدام Clang والأدوات المساعدة المتوافقة تماماً
           make -j$(nproc) O=out LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
