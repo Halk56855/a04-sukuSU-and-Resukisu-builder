@@ -1,4 +1,4 @@
-name: Build Samsung A04m Stable rksu Kernel with GitGud Clang & LTO
+name: Build Samsung A04m Stable rksu Kernel with StatiXOS Clang & LTO
 
 on:
   workflow_dispatch:
@@ -20,20 +20,20 @@ jobs:
           apt update
           apt install -y build-essential bc bison flex libssl-dev libelf-dev git wget python3 python3-pip curl zip tar dos2unix gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      - name: Setup Clang Toolchain from GitGud
+      - name: Setup StatiXOS Clang Toolchain (clang-r416183c)
         run: |
-          echo "Setting up Clang toolchain from GitGud repository..."
-          mkdir -p toolchain/clang/host/linux-x86/clang-r596125
+          echo "Setting up StatiXOS Clang toolchain from GitHub..."
+          mkdir -p toolchain/clang/host/linux-x86
           
-          git clone https://gitgud.io/aosp/toolchain/llvm-project.git toolchain/clang-llvm-src
+          # استنساخ مستودع StatiXOS بشكل سريع لجلب الإصدار المطلوب مباشرة
+          git clone --depth=1 https://github.com/StatiXOS/android_prebuilts_clang_host_linux-x86.git toolchain/clang/host/linux-x86/statix-repo
           
-          # نقل محتويات المستودع أو ضبط المسار بالشكل المتوافق مع مسارات البناء
-          if [ -d "toolchain/clang-llvm-src" ]; then
-            rm -rf toolchain/clang/host/linux-x86/clang-r596125
-            mv toolchain/clang-llvm-src toolchain/clang/host/linux-x86/clang-r596125
-            echo "Clang toolchain from GitGud set up successfully."
+          if [ -d "toolchain/clang/host/linux-x86/statix-repo/clang-r416183c" ]; then
+            mv toolchain/clang/host/linux-x86/statix-repo/clang-r416183c toolchain/clang/host/linux-x86/
+            rm -rf toolchain/clang/host/linux-x86/statix-repo
+            echo "StatiXOS Clang toolchain clang-r416183c set up successfully."
           else
-            echo "Error: Failed to clone Clang toolchain from GitGud!"
+            echo "Error: Failed to find clang-r416183c in StatiXOS repository!"
             exit 1
           fi
 
@@ -41,15 +41,16 @@ jobs:
         run: |
           curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s v3.0.0-30-legacy
 
-      - name: Reset Drivers and Safe Kconfig Fixer
+      - name: Reset Drivers and Comprehensive Kconfig & Plus Sign Cleaner
         run: |
-          echo "Resetting all drivers and Kconfig files to pristine state..."
+          echo "Resetting drivers and cleaning line endings..."
           git checkout drivers/ || true
-          
-          echo "Cleaning line endings..."
           find . -name "Kconfig*" -type f -exec dos2unix {} + || true
           find . -name "Kconfig" -type f -exec dos2unix {} + || true
 
+          # إزالة الحروف الزائدة '+' أو الرموز المعطوبة داخل ملفات Kconfig للدرايفرات لمنع خطأ syncconfig
+          find drivers/ -name "Kconfig*" -type f -exec sed -i 's/+//g' {} + || true
+          
           if [ -f "drivers/soc/mediatek/Kconfig" ]; then
             sed -i '/config MTK_CMDQ/,/^$/ s/tristate/bool/g' drivers/soc/mediatek/Kconfig || true
             sed -i 's/tristate "MediaTek Command Queue"/bool "MediaTek Command Queue"/' drivers/soc/mediatek/Kconfig || true
@@ -59,37 +60,30 @@ jobs:
             sed -i 's/tristate "MTK QOS Framework"/bool "MTK QOS Framework"/' drivers/misc/mediatek/base/power/Kconfig || true
           fi
 
+          # سكريبت بايثون لتنظيف أي رموز افتراضية خاطئة تسبب أخطاء في الـ Kconfig
           python3 -c '
           import glob
-
-          paths = glob.glob("drivers/**/Kconfig", recursive=True) + ["Kconfig"]
-
+          paths = glob.glob("drivers/**/Kconfig", recursive=True) + ["Kconfig", "init/Kconfig"]
           for path in set(paths):
               try:
                   with open(path, "r", encoding="utf-8", errors="ignore") as f:
                       lines = f.readlines()
-                  
                   new_lines = []
                   modified = False
                   for line in lines:
                       stripped = line.strip()
-                      if "default symbol" in stripped or ("TOUCHSCREEN_HIMAX_INCELL" in stripped and "default" in stripped):
+                      if "default symbol" in stripped:
                           new_lines.append("# " + line.strip() + " # Fixed safe default mismatch\n")
                           modified = True
                           continue
                       new_lines.append(line)
-                      
                   if modified:
                       with open(path, "w", encoding="utf-8") as f:
                           f.writelines(new_lines)
               except Exception as e:
                   print(f"Safe skip for {path}: {e}")
-
-          print("Kconfig files cleaned and fixed safely without syntax corruption.")
           '
-
-          find . -name "Kconfig*" -type f -exec sed -i 's/\r//g' {} + || true
-          echo "All Kconfig conflicts resolved safely."
+          echo "Kconfig files cleaned successfully."
 
       - name: Configure Kernel Defconfig with Options
         run: |
@@ -108,30 +102,25 @@ jobs:
             echo "CONFIG_PROCA=n" >> "$DEFCONFIG_FILE"
             echo "CONFIG_KERNEL_GZIP=y" >> "$DEFCONFIG_FILE"
             
-            echo "Defconfig updated successfully."
             echo "DEFCONFIG_NAME=$(basename $DEFCONFIG_FILE)" >> $GITHUB_ENV
           else
             echo "Error: Defconfig not found!"
             exit 1
           fi
 
-      - name: Build Kernel with GitGud Clang Toolchain
+      - name: Build Kernel with StatiXOS Clang Toolchain
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
           
-          # التحقق من مسار الـ bin ضمن أداة Clang المستنسخة
-          if [ -d "$(pwd)/toolchain/clang/host/linux-x86/clang-r596125/bin" ]; then
-            export PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r596125/bin:$PATH"
+          # ربط المسار الصحيح تماماً لملفات الـ bin الخاصة بـ StatiXOS Clang
+          FOUND_BIN=$(find "$(pwd)/toolchain/clang/host/linux-x86/clang-r416183c" -type d -name "bin" | head -n 1)
+          if [ -n "$FOUND_BIN" ]; then
+            export PATH="$FOUND_BIN:$PATH"
+            echo "Clang bin path exported: $FOUND_BIN"
           else
-            # البحث التلقائي عن مجلد الـ bin إذا كان متداخلًا
-            FOUND_BIN=$(find "$(pwd)/toolchain/clang/host/linux-x86/clang-r596125" -type d -name "bin" | head -n 1)
-            if [ -n "$FOUND_BIN" ]; then
-              export PATH="$(dirname "$FOUND_BIN"):$PATH"
-            else
-              echo "Error: Clang bin directory not found!"
-              exit 1
-            fi
+            echo "Error: Clang bin directory not found!"
+            exit 1
           fi
           
           make clean && make mrproper
@@ -156,10 +145,10 @@ jobs:
           fi
           
           cd anykernel
-          zip -r9 ../Samsung-A04m-Stable-rksu-GitGudClang-Kernel.zip *
+          zip -r9 ../Samsung-A04m-Stable-rksu-StatiXOSClang-Kernel.zip *
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Samsung-A04m-Stable-rksu-GitGudClang-Artifact
-          path: Samsung-A04m-Stable-rksu-GitGudClang-Kernel.zip
+          name: Samsung-A04m-Stable-rksu-StatiXOSClang-Artifact
+          path: Samsung-A04m-Stable-rksu-StatiXOSClang-Kernel.zip
